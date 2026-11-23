@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compilador de ORFAs - Produção & Separação</title>
+  
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts: Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- PDF.js via CDN para leitura local de PDFs no navegador -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  
+  <!-- Chart.js via CDN para dashboards interativos -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <!-- SheetJS (XLSX) via CDN para exportação real em Excel (.xlsx) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- Lucide Icons via CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    @media print {
+      @page {
+        size: landscape;
+        margin: 12mm;
+      }
+      html, body {
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+        font-size: 11px !important;
+        line-height: 1.4 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      header, footer, #dropZone, #loadedFilesBar, #filtrosSection, #toastContainer, .no-print {
+        display: none !important;
+      }
+      #printHeader {
+        display: flex !important;
+        margin-bottom: 16px !important;
+        padding-bottom: 10px !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+      }
+      main {
+        max-width: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      #dashboardContent {
+        display: block !important;
+      }
+      #dashboardContent > section {
+        box-shadow: none !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 10px !important;
+        padding: 14px !important;
+        margin-bottom: 20px !important;
+        page-break-inside: auto !important;
+        break-inside: auto !important;
+      }
+      #dashboardContent > section + section {
+        page-break-before: always !important;
+        break-before: always !important;
+      }
+      h2 {
+        font-size: 15px !important;
+        line-height: 1.3 !important;
+        margin-bottom: 8px !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+      }
+      h3, h4 {
+        font-size: 12px !important;
+        line-height: 1.3 !important;
+        margin-bottom: 8px !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+      }
+      .grid {
+        display: grid !important;
+        gap: 12px !important;
+      }
+      .grid.lg\:grid-cols-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+      .grid.lg\:grid-cols-12 {
+        grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+      }
+      .grid.lg\:grid-cols-12 > .lg\:col-span-5 {
+        grid-column: span 5 / span 5 !important;
+      }
+      .grid.lg\:grid-cols-12 > .lg\:col-span-7 {
+        grid-column: span 7 / span 7 !important;
+      }
+      .grid > div, .bg-slate-50\/50, .bg-slate-50\/60 {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+      .overflow-x-auto, .max-h-64 {
+        overflow: visible !important;
+        max-height: none !important;
+      }
+      table {
+        width: 100% !important;
+        table-layout: auto !important;
+        border-collapse: collapse !important;
+        font-size: 10px !important;
+        line-height: 1.35 !important;
+      }
+      thead {
+        display: table-header-group !important;
+      }
+      tr {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+      th, td {
+        padding: 6px 8px !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+        vertical-align: top !important;
+      }
+      th.truncate, td.truncate, .max-w-\[200px\] {
+        max-width: none !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+      }
+      .relative.h-64 {
+        height: 220px !important;
+        width: 100% !important;
+      }
+      canvas {
+        max-width: 100% !important;
+        max-height: 220px !important;
+        width: 100% !important;
+        height: auto !important;
+      }
+      span.px-2, span.px-2\.5, span.px-3 {
+        display: inline-block !important;
+        margin: 1px 2px 1px 0 !important;
+        line-height: 1.25 !important;
+      }
+    }
+  </style>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            slate: {
+              850: '#172033',
+              900: '#0f172a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
+
+  <!-- Barra Superior Industrial -->
+  <header class="bg-slate-900 text-white shadow-lg border-b border-slate-700 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="bg-blue-600 p-2.5 rounded-xl shadow-inner">
+          <i data-lucide="factory" class="w-6 h-6 text-white"></i>
+        </div>
+        <div>
+          <h1 class="text-lg sm:text-xl font-bold tracking-tight flex items-center gap-2">
+            Compilador de ORFAs
+            <span class="text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">100% Navegador</span>
+          </h1>
+          <p class="text-xs text-slate-400">Consolidação de Ordens de Fabricação, Acabamentos e Dashboards por Família</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="btnLoadDemo" onclick="carregarDadosExemplo()" class="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 text-xs sm:text-sm font-medium px-3.5 py-2 rounded-xl transition cursor-pointer">
+          <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
+          Testar com ORFA 187/2026
+        </button>
+        <button id="btnClearAll" onclick="limparDados()" class="hidden inline-flex items-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 text-xs sm:text-sm font-medium px-3 py-2 rounded-xl transition cursor-pointer">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+          Limpar
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Caixa de Mensagens / Notificações (Substitui alert) -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- Cabeçalho Exclusivo para Impressão / Exportação PDF Executivo -->
+  <div id="printHeader" class="hidden items-center justify-between border-b-2 border-slate-800 pb-3 mb-4 px-6 pt-4">
+    <div>
+      <h1 class="text-xl font-extrabold text-slate-900 uppercase tracking-tight">Relatório Executivo e Consolidado de Produção — ORFAs</h1>
+      <p class="text-xs text-slate-600 mt-0.5" id="printSubtitulo">Resumo Geral, Análise de Bojos, Dashboards por Família e Lista de Separação</p>
+    </div>
+    <div class="text-right text-xs text-slate-600">
+      <p class="font-bold text-slate-800" id="printDataEmissao"></p>
+      <p id="printFiltrosAtivos">Filtros: Todos os registros</p>
+    </div>
+  </div>
+
+  <!-- Conteúdo Principal -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Área de Importação de Múltiplos PDFs -->
+    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6 no-print">
+      <div id="dropZone" class="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50/70 hover:bg-blue-50/40 rounded-xl p-6 sm:p-8 text-center transition-all cursor-pointer group">
+        <input type="file" id="pdfInput" accept=".pdf" multiple class="hidden" />
+        <div class="mx-auto w-14 h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+          <i data-lucide="file-up" class="w-7 h-7"></i>
+        </div>
+        <h2 class="text-base sm:text-lg font-semibold text-slate-800">
+          Arraste e solte vários PDFs de ORFA aqui ou <span class="text-blue-600 underline">clique para selecionar</span>
+        </h2>
+        <p class="text-xs sm:text-sm text-slate-500 mt-1 max-w-xl mx-auto">
+          Você pode selecionar dezenas de arquivos de diferentes clientes ao mesmo tempo. Os arquivos são processados localmente na memória do seu navegador.
+        </p>
+        
+        <!-- Barra de Progresso -->
+        <div id="progressWrapper" class="hidden mt-5 max-w-md mx-auto">
+          <div class="flex justify-between text-xs font-medium text-slate-600 mb-1">
+            <span id="progressText">Processando arquivos...</span>
+            <span id="progressPercent">0%</span>
+          </div>
+          <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+            <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista de Arquivos Carregados -->
+      <div id="loadedFilesBar" class="hidden mt-4 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-2" id="fileChipsContainer"></div>
+        <label for="pdfInput" class="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg cursor-pointer transition">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+          Adicionar mais PDFs
+        </label>
+      </div>
+    </section>
+
+    <!-- Painel Principal (Oculto até haver dados) -->
+    <div id="dashboardContent" class="hidden space-y-6">
+
+      <!-- Barra de Filtros Dinâmicos -->
+      <section id="filtrosSection" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5 no-print">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+            <i data-lucide="filter" class="w-4 h-4 text-blue-600"></i>
+            Filtros de Produção
+          </h3>
+          <button onclick="resetarFiltros()" class="text-xs font-medium text-blue-600 hover:underline cursor-pointer">
+            Limpar filtros
+          </button>
+        </div>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Cliente</label>
+            <select id="filterCliente" onchange="aplicarFiltros()" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none">
+              <option value="TODOS">Todos os Clientes</option>
+            </select>
+          </div>
+          
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Nº ORFA</label>
+            <select id="filterOrfa" onchange="aplicarFiltros()" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none">
+              <option value="TODAS">Todas as ORFAs</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Família do Expositor</label>
+            <select id="filterFamilia" onchange="aplicarFiltros()" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none">
+              <option value="TODAS">Todas as Famílias</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Busca Livre (Modelo, Acabamento, Gás...)</label>
+            <div class="relative">
+              <input type="text" id="filterBusca" oninput="aplicarFiltros()" placeholder="Ex: INOX, R404, 2500, VAP..." class="w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none">
+              <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 1. RESUMO GERAL DA PRODUÇÃO -->
+      <section class="space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <i data-lucide="layout-dashboard" class="w-5 h-5 text-blue-600"></i>
+            Resumo Geral da Produção
+          </h2>
+          <div class="flex flex-wrap items-center gap-2 no-print">
+            <button onclick="exportarPDFExecutivo()" class="inline-flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-sm transition cursor-pointer">
+              <i data-lucide="printer" class="w-4 h-4"></i>
+              Exportar PDF Executivo
+            </button>
+            <button onclick="exportarExcel()" class="inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-sm transition cursor-pointer">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              Exportar Excel (.xlsx)
+            </button>
+          </div>
+        </div>
+
+        <!-- Cards KPI -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Total de Expositores</span>
+              <span class="p-2 bg-blue-50 text-blue-600 rounded-xl"><i data-lucide="package" class="w-4 h-4"></i></span>
+            </div>
+            <p id="kpiTotalPecas" class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-2">0</p>
+            <p class="text-xs text-slate-500 mt-1">Unidades totais a produzir</p>
+          </div>
+
+          <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">ORFAs Compiladas</span>
+              <span class="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><i data-lucide="file-check-2" class="w-4 h-4"></i></span>
+            </div>
+            <p id="kpiTotalOrfas" class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-2">0</p>
+            <p class="text-xs text-slate-500 mt-1">Ordens de fabricação</p>
+          </div>
+
+          <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Clientes Atendidos</span>
+              <span class="p-2 bg-amber-50 text-amber-600 rounded-xl"><i data-lucide="building-2" class="w-4 h-4"></i></span>
+            </div>
+            <p id="kpiTotalClientes" class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-2">0</p>
+            <p class="text-xs text-slate-500 mt-1">Pedidos distintos</p>
+          </div>
+
+          <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Famílias de Itens</span>
+              <span class="p-2 bg-emerald-50 text-emerald-600 rounded-xl"><i data-lucide="layers" class="w-4 h-4"></i></span>
+            </div>
+            <p id="kpiTotalFamilias" class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-2">0</p>
+            <p class="text-xs text-slate-500 mt-1">Categorias de expositores</p>
+          </div>
+        </div>
+
+        <!-- Tabela Resumida por Cliente / ORFA -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <h3 class="text-sm font-bold text-slate-700">Cronograma Resumido por Cliente e ORFA</h3>
+            <span id="badgeCountOrfas" class="text-xs font-medium bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full">0 pedidos</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-sm">
+              <thead>
+                <tr class="bg-slate-50/60 border-b border-slate-200 text-xs font-semibold uppercase text-slate-500">
+                  <th class="py-3 px-4">Nº ORFA</th>
+                  <th class="py-3 px-4">Cliente</th>
+                  <th class="py-3 px-4">Cidade/UF</th>
+                  <th class="py-3 px-4">Data Entrega</th>
+                  <th class="py-3 px-4">Famílias Envolvidas</th>
+                  <th class="py-3 px-4 text-right">Qtd Expositores</th>
+                </tr>
+              </thead>
+              <tbody id="tabelaResumoClientes" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. DASHBOARDS POR FAMÍLIA DE EXPOSITOR -->
+      <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <i data-lucide="bar-chart-3" class="w-5 h-5 text-blue-600"></i>
+              Dashboards por Família de Expositor
+            </h2>
+            <p class="text-xs text-slate-500 mt-0.5">Selecione uma família abaixo para analisar modelos, acabamentos e especificações de refrigeração</p>
+          </div>
+        </div>
+
+        <!-- Abas Dinâmicas de Famílias -->
+        <div id="familiaTabsContainer" class="flex flex-wrap gap-2"></div>
+
+        <!-- Mini-KPIs da Família Selecionada -->
+        <div id="familiaMiniKpis" class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200/80"></div>
+
+        <!-- Grid de 4 Gráficos (Chart.js) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="bg-slate-50/50 border border-slate-200/80 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-slate-700 mb-3">1. Quantidade por Modelo e Comprimento</h4>
+            <div class="relative h-64 w-full">
+              <canvas id="chartModelos"></canvas>
+            </div>
+          </div>
+
+          <div class="bg-slate-50/50 border border-slate-200/80 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-slate-700 mb-3">2. Acabamento TT/PNL vs. Acabamento Externo</h4>
+            <div class="relative h-64 w-full">
+              <canvas id="chartAcabamentos"></canvas>
+            </div>
+          </div>
+
+          <div class="bg-slate-50/50 border border-slate-200/80 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-slate-700 mb-3">3. Refrigeração: Fluido / Gás e Evaporador</h4>
+            <div class="relative h-64 w-full">
+              <canvas id="chartRefrigeracao"></canvas>
+            </div>
+          </div>
+
+          <div class="bg-slate-50/50 border border-slate-200/80 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-slate-700 mb-3">4. Carenagem Frontal e Configuração de Porta</h4>
+            <div class="relative h-64 w-full">
+              <canvas id="chartCarenagemPorta"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2.5 DASHBOARD E AGRUPAMENTO DE BOJOS (MATERIAL + DIMENSÃO + FAMÍLIA) -->
+      <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <i data-lucide="box" class="w-5 h-5 text-indigo-600"></i>
+              Dashboard & Consolidação de Bojos (Material × Dimensão × Família)
+            </h2>
+            <p class="text-xs text-slate-500 mt-0.5">Agrupamento automático dos bojos que possuem o mesmo material, comprimento e família para corte e dobra</p>
+          </div>
+          <span id="badgeTotalBojos" class="text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1 rounded-full self-start sm:self-center">0 bojos</span>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <!-- Gráfico de Bojos Agrupados -->
+          <div class="lg:col-span-5 bg-slate-50/60 border border-slate-200/80 rounded-xl p-4">
+            <h4 class="text-sm font-bold text-slate-700 mb-3">Volume de Bojos por Material e Dimensão</h4>
+            <div class="relative h-64 w-full">
+              <canvas id="chartBojosAgrupados"></canvas>
+            </div>
+          </div>
+
+          <!-- Tabela Consolidada de Bojos -->
+          <div class="lg:col-span-7 bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-600">Lista Consolidada para Produção de Bojos</span>
+              <span id="badgeTiposBojos" class="text-xs text-slate-500 font-medium">0 variações</span>
+            </div>
+            <div class="overflow-x-auto max-h-64">
+              <table class="w-full text-left border-collapse text-xs sm:text-sm">
+                <thead class="bg-slate-800 text-slate-100 text-xs uppercase sticky top-0">
+                  <tr>
+                    <th class="py-2.5 px-3">Família</th>
+                    <th class="py-2.5 px-3">Material do Bojo</th>
+                    <th class="py-2.5 px-3">Dimensão (Comp.)</th>
+                    <th class="py-2.5 px-3">Modelos</th>
+                    <th class="py-2.5 px-3 text-center bg-indigo-900">Qtd Bojos</th>
+                  </tr>
+                </thead>
+                <tbody id="tabelaBojosAgrupados" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. RELATÓRIO COMPILADO PARA SEPARAÇÃO (PRODUÇÃO) -->
+      <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="p-5 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <i data-lucide="clipboard-list" class="w-5 h-5 text-blue-600"></i>
+              Relatório Compilado para Separação
+            </h2>
+            <p class="text-xs text-slate-500 mt-0.5">Alterne entre a lista detalhada por ORFA/Endereço ou a soma consolidada de peças idênticas</p>
+          </div>
+
+          <!-- Toggle Visão Detalhada vs Agrupada -->
+          <div class="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200 self-start">
+            <button id="btnViewDetalhada" onclick="mudarModoTabela('detalhada')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-blue-600 shadow-sm transition cursor-pointer">
+              Visão Detalhada (ORFA / Endereço)
+            </button>
+            <button id="btnViewAgrupada" onclick="mudarModoTabela('agrupada')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer">
+              Visão Agrupada (Soma de Peças)
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs sm:text-sm whitespace-nowrap">
+            <thead id="tabelaRelatorioHead" class="bg-slate-800 text-slate-100 text-xs uppercase tracking-wider"></thead>
+            <tbody id="tabelaRelatorioBody" class="divide-y divide-slate-200"></tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="bg-white border-t border-slate-200 py-4 mt-10">
+    <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-400">
+      Sistema de Compilação de ORFAs NSF/Refrigeração • Execução 100% Local no Navegador
+    </div>
+  </footer>
+
+  <script>
+    // Inicializar ícones Lucide
+    lucide.createIcons();
+
+    // Configurar Worker do PDF.js
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    // Estado Global da Aplicação
+    let todosItens = [];
+    let itensFiltrados = [];
+    let arquivosProcessados = [];
+    let familiaAbaAtiva = 'TODAS';
+    let modoTabela = 'detalhada'; // 'detalhada' ou 'agrupada'
+    let chartsInstancias = {};
+
+    // Sistema de Notificação Toast (sem alert)
+    function mostrarToast(mensagem, tipo = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      const cores = {
+        sucesso: 'bg-emerald-600 text-white border-emerald-700',
+        erro: 'bg-red-600 text-white border-red-700',
+        info: 'bg-slate-800 text-white border-slate-700'
+      };
+      toast.className = `${cores[tipo] || cores.info} pointer-events-auto px-4 py-3 rounded-xl shadow-lg border text-sm font-medium flex items-center justify-between gap-3 transition-all duration-300`;
+      toast.innerHTML = `<span>${mensagem}</span><button onclick="this.parentElement.remove()" class="text-white/80 hover:text-white font-bold">&times;</button>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        if (toast.parentElement) toast.remove();
+      }, 5000);
+    }
+
+    // Configurar Drag & Drop e Input File
+    const dropZone = document.getElementById('dropZone');
+    const pdfInput = document.getElementById('pdfInput');
+
+    dropZone.addEventListener('click', () => pdfInput.click());
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('border-blue-500', 'bg-blue-50');
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+    });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        processarArquivosSelecionados(e.dataTransfer.files);
+      }
+    });
+
+    pdfInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        processarArquivosSelecionados(e.target.files);
+        pdfInput.value = '';
+      }
+    });
+
+    // Leitura e Extração de Múltiplos PDFs
+    async function processarArquivosSelecionados(fileList) {
+      const files = Array.from(fileList).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+      if (files.length === 0) {
+        mostrarToast('Por favor, selecione apenas arquivos no formato PDF.', 'erro');
+        return;
+      }
+
+      const progressWrapper = document.getElementById('progressWrapper');
+      const progressBar = document.getElementById('progressBar');
+      const progressText = document.getElementById('progressText');
+      const progressPercent = document.getElementById('progressPercent');
+
+      progressWrapper.classList.remove('hidden');
+      let novosItensTotal = 0;
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const pct = Math.round(((i) / files.length) * 100);
+        progressBar.style.width = `${pct}%`;
+        progressPercent.textContent = `${pct}%`;
+        progressText.textContent = `Lendo (${i + 1}/${files.length}): ${file.name}`;
+
+        try {
+          const itensDoPdf = await extrairDadosPDF(file);
+          if (itensDoPdf.length > 0) {
+            todosItens.push(...itensDoPdf);
+            novosItensTotal += itensDoPdf.length;
+            if (!arquivosProcessados.includes(file.name)) {
+              arquivosProcessados.push(file.name);
+            }
+          } else {
+            mostrarToast(`Aviso: Nenhum item de expositor reconhecido em "${file.name}".`, 'erro');
+          }
+        } catch (err) {
+          console.error(err);
+          mostrarToast(`Erro ao ler o arquivo "${file.name}".`, 'erro');
+        }
+      }
+
+      progressBar.style.width = '100%';
+      progressPercent.textContent = '100%';
+      progressText.textContent = 'Concluído!';
+      setTimeout(() => progressWrapper.classList.add('hidden'), 1200);
+
+      if (novosItensTotal > 0) {
+        atualizarInterfaceCompleta();
+        mostrarToast(`${novosItensTotal} registro(s) extraído(s) com sucesso de ${files.length} PDF(s)!`, 'sucesso');
+      }
+    }
+
+    // Motor de Extração de Texto do PDF via PDF.js
+    async function extrairDadosPDF(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const registros = [];
+
+      // Fallback de segurança pelo nome do arquivo (ex: "ORFA 187-2026 (2).pdf" -> "187/2026")
+      let orfaFallbackArquivo = 'NÃO IDENTIFICADA';
+      const matchNomeArq = file.name.match(/ORFA\s*0*(\d{1,5})[-_\/](\d{4})/i) || file.name.match(/\b(\d{1,5})[-_\/](20\d{2})\b/);
+      if (matchNomeArq) {
+        orfaFallbackArquivo = `${matchNomeArq[1]}/${matchNomeArq[2]}`;
+      }
+
+      let orfaAtual = orfaFallbackArquivo;
+      let pedidoAtual = '';
+      let clienteAtual = 'CLIENTE NÃO IDENTIFICADO';
+      let cidadeAtual = '';
+      let dataEntregaAtual = '';
+
+      // Função determinística para classificar a Família pela sigla do expositor
+      const classificarFamilia = (modeloStr) => {
+        const sig = (modeloStr || '').toUpperCase().trim().replace(/\s+/g, ' ');
+        if (sig.startsWith('VRA') || sig.startsWith('VCA')) return 'AÇOUGUE';
+        if (sig.startsWith('VR')) return 'PADARIA';
+        if (sig.startsWith('VA')) return 'VERTICAL ALTO';
+        if (
+          sig.startsWith('VIL') ||
+          sig.startsWith('ICDT') ||
+          sig.startsWith('ICFT') ||
+          sig.startsWith('ICD') ||
+          sig === 'IC' ||
+          sig.startsWith('IC ') ||
+          /^IC\b/.test(sig)
+        ) {
+          return 'ESPECIAIS';
+        }
+        return 'A DEFINIR';
+      };
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        
+        // Reconstruir linhas respeitando coordenadas Y (tolerância 4px) e X
+        const items = textContent.items.map(item => ({
+          str: item.str,
+          x: Math.round(item.transform[4]),
+          y: Math.round(item.transform[5])
+        }));
+
+        items.sort((a, b) => {
+          if (Math.abs(a.y - b.y) <= 4) return a.x - b.x;
+          return b.y - a.y;
+        });
+
+        let linhas = [];
+        let linhaAtual = [];
+        let ultimoY = null;
+
+        for (const it of items) {
+          if (!it.str.trim()) continue;
+          if (ultimoY === null || Math.abs(it.y - ultimoY) <= 4) {
+            linhaAtual.push(it.str.trim());
+          } else {
+            linhas.push(linhaAtual.join(' '));
+            linhaAtual = [it.str.trim()];
+          }
+          ultimoY = it.y;
+        }
+        if (linhaAtual.length > 0) linhas.push(linhaAtual.join(' '));
+
+        const textoPagina = linhas.join('\n');
+
+        // Ignorar página final de resumo ("Informações Complementares" / "Resumo de Balcões por Endereço")
+        if (textoPagina.includes('Resumo de Balcões por Endereço') && !textoPagina.includes('Acb. TT/PNL')) {
+          continue;
+        }
+
+        // Extrair Nº ORFA (suportando quebras de linha entre rótulo e número)
+        const matchOrfa =
+          textoPagina.match(/N[°ºo]?\s*ORFA\s*:?\s*([0-9]+\/[0-9]{4}(?:\s*-\s*\([^)]+\))?)/i) ||
+          textoPagina.match(/\b(\d{1,5}\/20\d{2}\s*-\s*\([A-Z0-9]+\))/i) ||
+          textoPagina.match(/N[°ºo]?\s*ORFA\s*:?\s*([^\n]+)/i);
+        if (matchOrfa && matchOrfa[1]) {
+          const candidatoOrfa = matchOrfa[1].trim();
+          if (/\d+\/\d{4}/.test(candidatoOrfa)) {
+            orfaAtual = candidatoOrfa;
+          }
+        }
+
+        const matchPedido = textoPagina.match(/N[°ºo]?\s*PEDIDO\s*:?\s*([^\n]+)/i);
+        if (matchPedido) pedidoAtual = matchPedido[1].replace(/Rev:.*/i, '').trim();
+
+        const matchCliente = textoPagina.match(/CLIENTE\s*:?\s*([^\n]+)/i);
+        if (matchCliente) clienteAtual = matchCliente[1].trim();
+
+        const matchCidade = textoPagina.match(/CIDADE\s*:?\s*([^\n]+)/i);
+        if (matchCidade) cidadeAtual = matchCidade[1].trim();
+
+        // Extrair Data de Entrega (permitindo quebras de linha/espaços entre rótulo e data)
+        const matchEntrega = textoPagina.match(/DATA\s*ENTREGA\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i);
+        if (matchEntrega) dataEntregaAtual = matchEntrega[1].trim();
+
+        // Dividir a página pelos blocos de equipamentos (ex: "01 IC 2080 (1.1)", "02 VAHP 2500 (7.1-7.2)")
+        const regexCabecalhoItem = /\b(\d{2})\s+([A-Z]{2,}(?:\s+[A-Z]{2,})?)\s+(\d{3,4})\s*\(([^)]+)\)/g;
+        let matches = [];
+        let m;
+        while ((m = regexCabecalhoItem.exec(textoPagina)) !== null) {
+          matches.push({
+            index: m.index,
+            qtd: parseInt(m[1], 10),
+            modelo: m[2].trim(),
+            comprimento: m[3].trim(),
+            endereco: m[4].trim()
+          });
+        }
+
+        for (let k = 0; k < matches.length; k++) {
+          const inicio = matches[k].index;
+          const fim = (k + 1 < matches.length) ? matches[k + 1].index : textoPagina.length;
+          const bloco = textoPagina.substring(inicio, fim);
+
+          const extrair = (regex) => {
+            const res = bloco.match(regex);
+            if (!res || !res[1]) return 'NÃO INFORMADO';
+            let valor = res[1].trim();
+            // Cortar caso outro rótulo da mesma linha tenha sido capturado junto
+            const stopWords = [
+              'Acb.', 'Bojo:', 'Grelha:', 'Perf.', 'Caren.', 'Porta', 'Serigrafia:', 
+              'Testeira', 'Fluido', 'Válvula:', 'Cx.', 'Evaporador:', 'Iluminação:', 
+              'Micromotor:', 'Voltagem:', 'Obs.', 'Lateral', 'Div.', 'Rodapé'
+            ];
+            for (const sw of stopWords) {
+              const idxSw = valor.indexOf(sw);
+              if (idxSw > 0) {
+                valor = valor.substring(0, idxSw).trim();
+              }
+            }
+            return valor || 'NÃO INFORMADO';
+          };
+
+          // Extrair Laterais
+          let latDireita = 'NÃO INFORMADO';
+          let latEsquerda = 'NÃO INFORMADO';
+          const matchLat = bloco.match(/Lateral Direita\s+Lateral Esquerda[^\n]*\n([^\n]+)/i);
+          if (matchLat) {
+            const linhaLat = matchLat[1].trim();
+            if (linhaLat.startsWith('PANORAMICA PANORAMICA')) {
+              latDireita = 'PANORAMICA';
+              latEsquerda = 'PANORAMICA';
+            } else if (linhaLat.startsWith('CEGA CEGA')) {
+              latDireita = 'CEGA';
+              latEsquerda = 'CEGA';
+            } else {
+              latDireita = linhaLat;
+            }
+          }
+
+          const familiaClassificada = classificarFamilia(matches[k].modelo);
+
+          registros.push({
+            id: `${file.name}-${pageNum}-${k}-${Math.random().toString(36).substr(2, 5)}`,
+            arquivo: file.name,
+            orfa: orfaAtual,
+            pedido: pedidoAtual,
+            cliente: clienteAtual,
+            cidade: cidadeAtual,
+            dataEntrega: dataEntregaAtual,
+            familia: familiaClassificada,
+            modelo: matches[k].modelo,
+            comprimento: matches[k].comprimento,
+            endereco: matches[k].endereco,
+            qtd: matches[k].qtd,
+            acbTT: extrair(/Acb\.\s*TT\/PNL:\s*([^\n]+)/i),
+            acbBandeja: extrair(/Acb\.\s*Bandeja:\s*([^\n]+)/i),
+            acbExterno: extrair(/Acb\.\s*Externo:\s*([^\n]+)/i),
+            carenFrontal: extrair(/Caren\.\s*Frontal:\s*([^\n]+)/i),
+            bojo: extrair(/Bojo:\s*([^\n]+)/i),
+            grelha: extrair(/Grelha:\s*([^\n]+)/i),
+            perfAluminio: extrair(/Perf\.\s*Alumínio:\s*([^\n]+)/i),
+            portaEtiqueta: extrair(/Porta\s*Etiqueta:\s*([^\n]+)/i),
+            serigrafia: extrair(/Serigrafia:\s*([^\n]+)/i),
+            porta: extrair(/Porta:\s*([^\n]+)/i),
+            fluido: extrair(/Fluido\/Gás:\s*([^\n]+)/i),
+            valvula: extrair(/Válvula:\s*([^\n]+)/i),
+            evaporador: extrair(/Evaporador:\s*([^\n]+)/i),
+            iluminacao: extrair(/Iluminação:\s*([^\n]+)/i),
+            latDireita: latDireita,
+            latEsquerda: latEsquerda,
+            obsGeral: extrair(/Obs\.\s*Geral:\s*([^\n]+)/i)
+          });
+        }
+      }
+
+      return registros;
+    }
+
+    // Carregar Dados Reais de Exemplo (ORFA 187-2026 + Amostras das Famílias)
+    function carregarDadosExemplo() {
+      const dadosDemo = [
+        {
+          id: 'demo-1', arquivo: 'ORFA 187-2026 (2).pdf', orfa: '187/2026 - (AA260068A)', pedido: 'P260703014A',
+          cliente: 'DISTRIBUIDORA DE ALIMENTOS JAPAO LTDA', cidade: 'BARUERI - SP', dataEntrega: '14/09/2026',
+          familia: 'ESPECIAIS', modelo: 'IC', comprimento: '2080', endereco: '1.1', qtd: 1,
+          acbTT: 'INOX', acbBandeja: 'INOX', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
+          bojo: 'INOX', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'BASCULANTE 100MM',
+          serigrafia: 'PRETA', porta: 'SEM PORTA', fluido: 'R22', valvula: 'ROSCA',
+          evaporador: 'SAÍDA INFERIOR', iluminacao: '4000K', latDireita: 'PANORAMICA', latEsquerda: 'PANORAMICA',
+          obsGeral: 'SEM TAMPO'
+        },
+        {
+          id: 'demo-2', arquivo: 'ORFA 187-2026 (2).pdf', orfa: '187/2026 - (AA260068A)', pedido: 'P260703014A',
+          cliente: 'DISTRIBUIDORA DE ALIMENTOS JAPAO LTDA', cidade: 'BARUERI - SP', dataEntrega: '14/09/2026',
+          familia: 'ESPECIAIS', modelo: 'IC', comprimento: '2500', endereco: '2.1-2.2', qtd: 2,
+          acbTT: 'INOX', acbBandeja: 'INOX', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
+          bojo: 'INOX', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'BASCULANTE 100MM',
+          serigrafia: 'PRETA', porta: 'SEM PORTA', fluido: 'R22', valvula: 'ROSCA',
+          evaporador: 'SAÍDA INFERIOR', iluminacao: '4000K', latDireita: 'CEGA', latEsquerda: 'CEGA',
+          obsGeral: 'SEM TAMPO'
+        },
+        {
+          id: 'demo-3', arquivo: 'ORFA 187-2026 (2).pdf', orfa: '187/2026 - (AA260068A)', pedido: 'P260703014A',
+          cliente: 'DISTRIBUIDORA DE ALIMENTOS JAPAO LTDA', cidade: 'BARUERI - SP', dataEntrega: '14/09/2026',
+          familia: 'ESPECIAIS', modelo: 'IC', comprimento: '2080', endereco: '3.1', qtd: 1,
+          acbTT: 'INOX', acbBandeja: 'INOX', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
+          bojo: 'INOX', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'BASCULANTE 100MM',
+          serigrafia: 'PRETA', porta: 'SEM PORTA', fluido: 'R22', valvula: 'ROSCA',
+          evaporador: 'SAÍDA INFERIOR', iluminacao: '4000K', latDireita: 'PANORAMICA', latEsquerda: 'PANORAMICA',
+          obsGeral: 'SEM TAMPO'
+        },
+        {
+          id: 'demo-4', arquivo: 'ORFA 187-2026 (2).pdf', orfa: '187/2026 - (AA260068A)', pedido: 'P260703014A',
+          cliente: 'DISTRIBUIDORA DE ALIMENTOS JAPAO LTDA', cidade: 'BARUERI - SP', dataEntrega: '14/09/2026',
+          familia: 'ESPECIAIS', modelo: 'IC', comprimento: '2500', endereco: '4.1-4.2', qtd: 2,
+          acbTT: 'INOX', acbBandeja: 'INOX', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
+          bojo: 'INOX', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'BASCULANTE 100MM',
+          serigrafia: 'PRETA', porta: 'SEM PORTA', fluido: 'R22', valvula: 'ROSCA',
+          evaporador: 'SAÍDA INFERIOR', iluminacao: '4000K', latDireita: 'CEGA', latEsquerda: 'CEGA',
+          obsGeral: 'SEM TAMPO'
+        },
+        {
+          id: 'demo-5', arquivo: 'ORFA 187-2026 (2).pdf', orfa: '187/2026 - (AA260068A)', pedido: 'P260703014A',
+          cliente: 'DISTRIBUIDORA DE ALIMENTOS JAPAO LTDA', cidade: 'BARUERI - SP', dataEntrega: '14/09/2026',
+          familia: 'VERTICAL ALTO', modelo: 'VAP MA', comprimento: '2250', endereco: '5.1', qtd: 1,
+          acbTT: 'PRETO (P1902)', acbBandeja: 'PRETO (P1902)', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
+          bojo: 'PRE PINTADO', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'M1502 PRETO',
+          serigrafia: 'PRETA', porta: 'COM PORTA', fluido: 'R404', valvula: 'NÃO INFORMADO',
+          evaporador: 'SAÍDA AÉREA', iluminacao: '4000K', latDireita: 'INTERMEDIARIA INOX (VAP MA/VAP MA)', latEsquerda: 'CEGA C/TUBO PROTETOR INOX',
+          obsGeral: 'COM MOTOR ACOPLADO'
+        },
+        {
+          id: 'demo-6', arquivo: 'ORFA 187-2026 (2).pdf', orfa: '187/2026 - (AA260068A)', pedido: 'P260703014A',
+          cliente: 'DISTRIBUIDORA DE ALIMENTOS JAPAO LTDA', cidade: 'BARUERI - SP', dataEntrega: '14/09/2026',
+          familia: 'VERTICAL ALTO', modelo: 'VAP MA', comprimento: '1500', endereco: '6.1', qtd: 1,
+          acbTT: 'PRETO (P1902)', acbBandeja: 'PRETO (P1902)', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
+          bojo: 'PRE PINTADO', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'M1502 PRETO',
+          serigrafia: 'PRETA', porta: 'COM PORTA', fluido: 'R404', valvula: 'NÃO INFORMADO',
+          evaporador: 'SAÍDA AÉREA', iluminacao: '4000K', latDireita: 'INTERMEDIARIA INOX (VAP MA/VAH)', latEsquerda: 'NÃO INFORMADO',
+          obsGeral: 'COM MOTOR ACOPLADO'
+        },
+        {
+          id: 'demo-7', arquivo: 'ORFA 187-2026 (2).pdf', orfa: '187/2026 - (AA260068A)', pedido: 'P260703014A',
+          cliente: 'DISTRIBUIDORA DE ALIMENTOS JAPAO LTDA', cidade: 'BARUERI - SP', dataEntrega: '14/09/2026',
+          familia: 'VERTICAL ALTO', modelo: 'VAHP', comprimento: '2500', endereco: '7.1-7.2', qtd: 2,
+          acbTT: 'INOX', acbBandeja: 'INOX', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
+          bojo: 'PRE PINTADO', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'BASCULANTE 100MM',
+          serigrafia: 'PRETA', porta: 'SEM PORTA', fluido: 'R22', valvula: 'ROSCA',
+          evaporador: 'SAÍDA INFERIOR', iluminacao: '4000K', latDireita: 'CEGA', latEsquerda: 'NÃO INFORMADO',
+          obsGeral: 'NÃO INFORMADO'
+        },
+        {
+          id: 'demo-8', arquivo: 'ORFA 192-2026.pdf', orfa: '192/2026 - (BB260091B)', pedido: 'P260704088B',
+          cliente: 'SUPERMERCADO IRMAOS UNIDOS LTDA', cidade: 'CAMPINAS - SP', dataEntrega: '22/09/2026',
+          familia: 'AÇOUGUE', modelo: 'VRA', comprimento: '2500', endereco: '8.1-8.2', qtd: 2,
+          acbTT: 'INOX', acbBandeja: 'INOX', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
+          bojo: 'INOX', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'BASCULANTE 100MM',
+          serigrafia: 'PRETA', porta: 'COM PORTA', fluido: 'R404', valvula: 'EXPANSÃO',
+          evaporador: 'SAÍDA AÉREA', iluminacao: '3000K', latDireita: 'CEGA', latEsquerda: 'CEGA',
+          obsGeral: 'GANCHEIRA INOX'
+        },
+        {
+          id: 'demo-9', arquivo: 'ORFA 192-2026.pdf', orfa: '192/2026 - (BB260091B)', pedido: 'P260704088B',
+          cliente: 'SUPERMERCADO IRMAOS UNIDOS LTDA', cidade: 'CAMPINAS - SP', dataEntrega: '22/09/2026',
+          familia: 'PADARIA', modelo: 'VR', comprimento: '1875', endereco: '9.1', qtd: 1,
+          acbTT: 'PRETO (P1902)', acbBandeja: 'INOX', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
+          bojo: 'INOX', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'M1502 PRETO',
+          serigrafia: 'PRETA', porta: 'COM PORTA', fluido: 'R22', valvula: 'ROSCA',
+          evaporador: 'SAÍDA INFERIOR', iluminacao: '3000K', latDireita: 'PANORAMICA', latEsquerda: 'PANORAMICA',
+          obsGeral: 'PRATELEIRAS VIDRO'
+        }
+      ];
+
+      todosItens = [...dadosDemo];
+      arquivosProcessados = ['ORFA 187-2026 (2).pdf (Exemplo)', 'ORFA 192-2026.pdf (Exemplo)'];
+      atualizarInterfaceCompleta();
+      mostrarToast('Dados de exemplo carregados com ORFA e classificação de Famílias atualizadas!', 'sucesso');
+    }
+
+    // Limpar todos os dados carregados
+    function limparDados() {
+      todosItens = [];
+      itensFiltrados = [];
+      arquivosProcessados = [];
+      familiaAbaAtiva = 'TODAS';
+      document.getElementById('dashboardContent').classList.add('hidden');
+      document.getElementById('loadedFilesBar').classList.add('hidden');
+      document.getElementById('btnClearAll').classList.add('hidden');
+      mostrarToast('Dados limpos com sucesso.', 'info');
+    }
+
+    // Atualizar toda a interface após importação
+    function atualizarInterfaceCompleta() {
+      document.getElementById('dashboardContent').classList.remove('hidden');
+      document.getElementById('loadedFilesBar').classList.remove('hidden');
+      document.getElementById('btnClearAll').classList.remove('hidden');
+
+      // Renderizar chips de arquivos carregados
+      const chipsContainer = document.getElementById('fileChipsContainer');
+      chipsContainer.innerHTML = arquivosProcessados.map(nome => `
+        <span class="inline-flex items-center gap-1.5 bg-slate-100 border border-slate-200 text-slate-700 text-xs font-medium px-2.5 py-1 rounded-lg">
+          <i data-lucide="file-text" class="w-3.5 h-3.5 text-blue-600"></i>
+          ${nome}
+        </span>
+      `).join('');
+
+      popularSelectsFiltro();
+      aplicarFiltros();
+      lucide.createIcons();
+    }
+
+    // Popular opções dos selects de filtro
+    function popularSelectsFiltro() {
+      const selCliente = document.getElementById('filterCliente');
+      const selOrfa = document.getElementById('filterOrfa');
+      const selFamilia = document.getElementById('filterFamilia');
+
+      const clientes = [...new Set(todosItens.map(i => i.cliente))].sort();
+      const orfas = [...new Set(todosItens.map(i => i.orfa))].sort();
+      const familias = [...new Set(todosItens.map(i => i.familia))].sort();
+
+      selCliente.innerHTML = '<option value="TODOS">Todos os Clientes</option>' +
+        clientes.map(c => `<option value="${c}">${c}</option>`).join('');
+
+      selOrfa.innerHTML = '<option value="TODAS">Todas as ORFAs</option>' +
+        orfas.map(o => `<option value="${o}">${o}</option>`).join('');
+
+      selFamilia.innerHTML = '<option value="TODAS">Todas as Famílias</option>' +
+        familias.map(f => `<option value="${f}">${f}</option>`).join('');
+    }
+
+    function resetarFiltros() {
+      document.getElementById('filterCliente').value = 'TODOS';
+      document.getElementById('filterOrfa').value = 'TODAS';
+      document.getElementById('filterFamilia').value = 'TODAS';
+      document.getElementById('filterBusca').value = '';
+      familiaAbaAtiva = 'TODAS';
+      aplicarFiltros();
+    }
+
+    // Aplicar filtros e atualizar KPIs, tabelas e gráficos
+    function aplicarFiltros() {
+      const clienteVal = document.getElementById('filterCliente').value;
+      const orfaVal = document.getElementById('filterOrfa').value;
+      const familiaVal = document.getElementById('filterFamilia').value;
+      const buscaVal = document.getElementById('filterBusca').value.toLowerCase().trim();
+
+      itensFiltrados = todosItens.filter(item => {
+        if (clienteVal !== 'TODOS' && item.cliente !== clienteVal) return false;
+        if (orfaVal !== 'TODAS' && item.orfa !== orfaVal) return false;
+        if (familiaVal !== 'TODAS' && item.familia !== familiaVal) return false;
+        if (buscaVal) {
+          const textoItem = Object.values(item).join(' ').toLowerCase();
+          if (!textoItem.includes(buscaVal)) return false;
+        }
+        return true;
+      });
+
+      atualizarKPIs();
+      renderizarResumoClientes();
+      renderizarAbasFamilias();
+      renderizarDashboardBojos();
+      renderizarTabelaRelatorio();
+    }
+
+    function atualizarKPIs() {
+      const totalPecas = itensFiltrados.reduce((acc, item) => acc + item.qtd, 0);
+      const totalOrfas = new Set(itensFiltrados.map(i => i.orfa)).size;
+      const totalClientes = new Set(itensFiltrados.map(i => i.cliente)).size;
+      const totalFamilias = new Set(itensFiltrados.map(i => i.familia)).size;
+
+      document.getElementById('kpiTotalPecas').textContent = totalPecas;
+      document.getElementById('kpiTotalOrfas').textContent = totalOrfas;
+      document.getElementById('kpiTotalClientes').textContent = totalClientes;
+      document.getElementById('kpiTotalFamilias').textContent = totalFamilias;
+    }
+
+    function renderizarResumoClientes() {
+      const mapa = new Map();
+      for (const item of itensFiltrados) {
+        const chave = `${item.orfa}||${item.cliente}`;
+        if (!mapa.has(chave)) {
+          mapa.set(chave, {
+            orfa: item.orfa,
+            cliente: item.cliente,
+            cidade: item.cidade || '-',
+            dataEntrega: item.dataEntrega || '-',
+            familias: new Set(),
+            qtdTotal: 0
+          });
+        }
+        const reg = mapa.get(chave);
+        reg.familias.add(item.familia);
+        reg.qtdTotal += item.qtd;
+      }
+
+      const lista = Array.from(mapa.values());
+      document.getElementById('badgeCountOrfas').textContent = `${lista.length} pedido(s)`;
+
+      const tbody = document.getElementById('tabelaResumoClientes');
+      if (lista.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-slate-400">Nenhum registro encontrado para os filtros atuais.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = lista.map(r => `
+        <tr class="hover:bg-slate-50 transition">
+          <td class="py-3 px-4 font-bold text-blue-700">${r.orfa}</td>
+          <td class="py-3 px-4 font-medium text-slate-800">${r.cliente}</td>
+          <td class="py-3 px-4 text-slate-600">${r.cidade}</td>
+          <td class="py-3 px-4 text-slate-600">${r.dataEntrega}</td>
+          <td class="py-3 px-4">
+            <div class="flex flex-wrap gap-1">
+              ${[...r.familias].map(f => badgeFamilia(f)).join('')}
+            </div>
+          </td>
+          <td class="py-3 px-4 text-right font-extrabold text-slate-900">${r.qtdTotal} un.</td>
+        </tr>
+      `).join('');
+    }
+
+    // Abas e Dashboards por Família
+    function renderizarAbasFamilias() {
+      const familiasDisponiveis = ['TODAS', ...new Set(itensFiltrados.map(i => i.familia))];
+      if (!familiasDisponiveis.includes(familiaAbaAtiva)) {
+        familiaAbaAtiva = 'TODAS';
+      }
+
+      const container = document.getElementById('familiaTabsContainer');
+      container.innerHTML = familiasDisponiveis.map(fam => {
+        const ativa = fam === familiaAbaAtiva;
+        const qtdFam = (fam === 'TODAS' ? itensFiltrados : itensFiltrados.filter(i => i.familia === fam))
+          .reduce((s, x) => s + x.qtd, 0);
+        const label = fam === 'TODAS' ? `Todas as Famílias (${qtdFam})` : `${fam} (${qtdFam})`;
+        const cls = ativa
+          ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200';
+        return `<button onclick="selecionarAbaFamilia('${fam}')" class="px-3.5 py-2 rounded-xl text-xs font-bold border transition cursor-pointer">${label}</button>`;
+      }).join('');
+
+      atualizarDashboardsFamilia();
+    }
+
+    function selecionarAbaFamilia(fam) {
+      familiaAbaAtiva = fam;
+      renderizarAbasFamilias();
+    }
+
+    function atualizarDashboardsFamilia() {
+      const dadosFam = familiaAbaAtiva === 'TODAS'
+        ? itensFiltrados
+        : itensFiltrados.filter(i => i.familia === familiaAbaAtiva);
+
+      // Mini KPIs
+      const totalQtd = dadosFam.reduce((s, i) => s + i.qtd, 0);
+      const modelosUnicos = new Set(dadosFam.map(i => `${i.modelo} ${i.comprimento}`)).size;
+      const contagemAcb = {};
+      dadosFam.forEach(i => { contagemAcb[i.acbTT] = (contagemAcb[i.acbTT] || 0) + i.qtd; });
+      const acbTop = Object.entries(contagemAcb).sort((a, b) => b[1] - a[1])[0]?.[0] || '-';
+
+      document.getElementById('familiaMiniKpis').innerHTML = `
+        <div>
+          <span class="text-xs font-medium text-slate-500">Total de Expositores (${familiaAbaAtiva})</span>
+          <p class="text-2xl font-extrabold text-slate-900 mt-0.5">${totalQtd} un.</p>
+        </div>
+        <div>
+          <span class="text-xs font-medium text-slate-500">Modelos / Comprimentos Distintos</span>
+          <p class="text-2xl font-extrabold text-blue-600 mt-0.5">${modelosUnicos}</p>
+        </div>
+        <div>
+          <span class="text-xs font-medium text-slate-500">Acabamento TT/PNL Predominante</span>
+          <p class="text-base font-bold text-slate-800 mt-1 truncate">${acbTop}</p>
+        </div>
+      `;
+
+      // Agrupadores auxiliares
+      const agruparSoma = (fnChave) => {
+        const map = {};
+        dadosFam.forEach(item => {
+          const k = fnChave(item);
+          map[k] = (map[k] || 0) + item.qtd;
+        });
+        return Object.entries(map).sort((a, b) => b[1] - a[1]);
+      };
+
+      const modelosData = agruparSoma(i => `${i.modelo} (${i.comprimento})`);
+      const acbTTData = agruparSoma(i => `TT: ${i.acbTT} | Ext: ${i.acbExterno}`);
+      const refrigData = agruparSoma(i => `${i.fluido} - ${i.evaporador}`);
+      const carenData = agruparSoma(i => `${i.carenFrontal} | ${i.porta}`);
+
+      desenharGrafico('chartModelos', 'bar', modelosData.map(x => x[0]), modelosData.map(x => x[1]), 'Quantidade', '#2563eb');
+      desenharGrafico('chartAcabamentos', 'doughnut', acbTTData.map(x => x[0]), acbTTData.map(x => x[1]), 'Peças');
+      desenharGrafico('chartRefrigeracao', 'bar', refrigData.map(x => x[0]), refrigData.map(x => x[1]), 'Quantidade', '#059669');
+      desenharGrafico('chartCarenagemPorta', 'pie', carenData.map(x => x[0]), carenData.map(x => x[1]), 'Peças');
+    }
+
+    // Agrupamento e Dashboard de Bojos (Material + Dimensão + Família)
+    function obterBojosAgrupados() {
+      const mapa = new Map();
+      for (const item of itensFiltrados) {
+        const material = (item.bojo || 'NÃO INFORMADO').toUpperCase().trim();
+        const dimensao = (item.comprimento || 'NÃO INFORMADA').toString().trim();
+        const familia = (item.familia || 'A DEFINIR').toUpperCase().trim();
+        const chave = `${familia}||${material}||${dimensao}`;
+
+        if (!mapa.has(chave)) {
+          mapa.set(chave, {
+            familia,
+            material,
+            dimensao,
+            modelos: new Set(),
+            qtd: 0
+          });
+        }
+        const grupo = mapa.get(chave);
+        grupo.modelos.add(item.modelo);
+        grupo.qtd += item.qtd;
+      }
+
+      return Array.from(mapa.values())
+        .map(g => ({ ...g, modelosLista: [...g.modelos].join(', ') }))
+        .sort((a, b) => b.qtd - a.qtd);
+    }
+
+    function renderizarDashboardBojos() {
+      const bojosAgrupados = obterBojosAgrupados();
+      const totalBojos = bojosAgrupados.reduce((acc, b) => acc + b.qtd, 0);
+
+      document.getElementById('badgeTotalBojos').textContent = `${totalBojos} bojo(s) no total`;
+      document.getElementById('badgeTiposBojos').textContent = `${bojosAgrupados.length} combinação(ões)`;
+
+      const tbody = document.getElementById('tabelaBojosAgrupados');
+      if (bojosAgrupados.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-slate-400">Nenhum bojo encontrado para os filtros selecionados.</td></tr>';
+      } else {
+        tbody.innerHTML = bojosAgrupados.map(b => `
+          <tr class="hover:bg-indigo-50/40 transition">
+            <td class="py-2.5 px-3">${badgeFamilia(b.familia)}</td>
+            <td class="py-2.5 px-3">${badgeAcabamento(b.material)}</td>
+            <td class="py-2.5 px-3 font-bold text-slate-800">${b.dimensao} mm</td>
+            <td class="py-2.5 px-3 text-xs text-slate-500">${b.modelosLista}</td>
+            <td class="py-2.5 px-3 text-center font-extrabold text-indigo-700 bg-indigo-50/50">${b.qtd}</td>
+          </tr>
+        `).join('');
+      }
+
+      const labelsGrafico = bojosAgrupados.map(b => `${b.material} • ${b.dimensao} (${b.familia})`);
+      const valoresGrafico = bojosAgrupados.map(b => b.qtd);
+      desenharGrafico('chartBojosAgrupados', 'bar', labelsGrafico, valoresGrafico, 'Qtd Bojos', '#4f46e5');
+    }
+
+    function desenharGrafico(canvasId, tipo, labels, valores, labelDataset, corUnica = null) {
+      const ctx = document.getElementById(canvasId);
+      if (!ctx) return;
+
+      if (chartsInstancias[canvasId]) {
+        chartsInstancias[canvasId].destroy();
+      }
+
+      const paleta = ['#2563eb', '#059669', '#d97706', '#7c3aed', '#e11d48', '#0891b2', '#4f46e5', '#65a30d'];
+
+      chartsInstancias[canvasId] = new Chart(ctx, {
+        type: tipo,
+        data: {
+          labels: labels.length ? labels : ['Sem dados'],
+          datasets: [{
+            label: labelDataset,
+            data: valores.length ? valores : [0],
+            backgroundColor: corUnica ? corUnica : paleta,
+            borderRadius: tipo === 'bar' ? 6 : 0,
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: tipo !== 'bar',
+              position: 'bottom',
+              labels: { boxWidth: 12, font: { size: 11 } }
+            }
+          },
+          scales: tipo === 'bar' ? {
+            y: { beginAtZero: true, ticks: { precision: 0 } },
+            x: { ticks: { font: { size: 11 } } }
+          } : {}
+        }
+      });
+    }
+
+    // Badges Visuais
+    function badgeFamilia(familia) {
+      const estilos = {
+        'VERTICAL ALTO': 'bg-blue-100 text-blue-800 border-blue-200',
+        'AÇOUGUE': 'bg-rose-100 text-rose-800 border-rose-200',
+        'PADARIA': 'bg-amber-100 text-amber-800 border-amber-200',
+        'ESPECIAIS': 'bg-purple-100 text-purple-800 border-purple-200',
+        'A DEFINIR': 'bg-slate-200 text-slate-700 border-slate-300'
+      };
+      const cls = estilos[familia] || 'bg-slate-100 text-slate-700 border-slate-200';
+      return `<span class="px-2.5 py-0.5 rounded-md text-xs font-bold border ${cls}">${familia}</span>`;
+    }
+
+    function badgeAcabamento(texto) {
+      if (!texto || texto === 'NÃO INFORMADO') {
+        return `<span class="text-slate-400 text-xs">-</span>`;
+      }
+      const isInox = texto.toUpperCase().includes('INOX');
+      const cls = isInox
+        ? 'bg-slate-200 text-slate-800 border-slate-300'
+        : 'bg-slate-800 text-white border-slate-900';
+      return `<span class="px-2 py-0.5 rounded text-xs font-semibold border ${cls}">${texto}</span>`;
+    }
+
+    // Alternar modo da tabela de relatório
+    function mudarModoTabela(modo) {
+      modoTabela = modo;
+      const btnDet = document.getElementById('btnViewDetalhada');
+      const btnAgr = document.getElementById('btnViewAgrupada');
+
+      if (modo === 'detalhada') {
+        btnDet.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-blue-600 shadow-sm transition cursor-pointer';
+        btnAgr.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer';
+      } else {
+        btnAgr.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-emerald-600 shadow-sm transition cursor-pointer';
+        btnDet.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition cursor-pointer';
+      }
+      renderizarTabelaRelatorio();
+    }
+
+    function obterDadosAgrupados() {
+      const mapa = new Map();
+      for (const i of itensFiltrados) {
+        const chave = [
+          i.familia, i.modelo, i.comprimento, i.acbTT, i.acbExterno,
+          i.carenFrontal, i.bojo, i.grelha, i.porta, i.fluido, i.evaporador
+        ].join('||');
+
+        if (!mapa.has(chave)) {
+          mapa.set(chave, { ...i, qtd: 0 });
+        }
+        mapa.get(chave).qtd += i.qtd;
+      }
+      return Array.from(mapa.values()).sort((a, b) => b.qtd - a.qtd);
+    }
+
+    function renderizarTabelaRelatorio() {
+      const thead = document.getElementById('tabelaRelatorioHead');
+      const tbody = document.getElementById('tabelaRelatorioBody');
+
+      if (modoTabela === 'detalhada') {
+        thead.innerHTML = `
+          <tr>
+            <th class="py-3 px-3">ORFA</th>
+            <th class="py-3 px-3">Cliente</th>
+            <th class="py-3 px-3">Entrega</th>
+            <th class="py-3 px-3">Família</th>
+            <th class="py-3 px-3">Modelo</th>
+            <th class="py-3 px-3">Comp.</th>
+            <th class="py-3 px-3">End.</th>
+            <th class="py-3 px-3 text-center">Qtd</th>
+            <th class="py-3 px-3">Acb. TT/PNL</th>
+            <th class="py-3 px-3">Acb. Externo</th>
+            <th class="py-3 px-3">Caren. Frontal</th>
+            <th class="py-3 px-3">Bojo / Grelha</th>
+            <th class="py-3 px-3">Porta</th>
+            <th class="py-3 px-3">Gás / Evap.</th>
+            <th class="py-3 px-3">Obs. Geral</th>
+          </tr>
+        `;
+
+        if (itensFiltrados.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="15" class="py-8 text-center text-slate-400">Nenhum expositor encontrado.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = itensFiltrados.map(i => `
+          <tr class="hover:bg-blue-50/40 transition">
+            <td class="py-2.5 px-3 font-bold text-blue-700">${i.orfa}</td>
+            <td class="py-2.5 px-3 font-medium text-slate-800 max-w-[200px] truncate" title="${i.cliente}">${i.cliente}</td>
+            <td class="py-2.5 px-3 text-slate-600">${i.dataEntrega || '-'}</td>
+            <td class="py-2.5 px-3">${badgeFamilia(i.familia)}</td>
+            <td class="py-2.5 px-3 font-bold text-slate-900">${i.modelo}</td>
+            <td class="py-2.5 px-3 text-slate-700">${i.comprimento}</td>
+            <td class="py-2.5 px-3 text-slate-500 font-mono text-xs">${i.endereco}</td>
+            <td class="py-2.5 px-3 text-center font-extrabold text-blue-600">${i.qtd}</td>
+            <td class="py-2.5 px-3">${badgeAcabamento(i.acbTT)}</td>
+            <td class="py-2.5 px-3">${badgeAcabamento(i.acbExterno)}</td>
+            <td class="py-2.5 px-3">${badgeAcabamento(i.carenFrontal)}</td>
+            <td class="py-2.5 px-3 text-xs text-slate-600">${i.bojo} / ${i.grelha}</td>
+            <td class="py-2.5 px-3 text-xs font-medium text-slate-700">${i.porta}</td>
+            <td class="py-2.5 px-3 text-xs text-slate-700">${i.fluido} • ${i.evaporador}</td>
+            <td class="py-2.5 px-3 text-xs text-amber-700 font-medium">${i.obsGeral !== 'NÃO INFORMADO' ? i.obsGeral : '-'}</td>
+          </tr>
+        `).join('');
+      } else {
+        thead.innerHTML = `
+          <tr>
+            <th class="py-3 px-3 text-center bg-emerald-900">Qtd Total</th>
+            <th class="py-3 px-3">Família</th>
+            <th class="py-3 px-3">Modelo</th>
+            <th class="py-3 px-3">Comprimento</th>
+            <th class="py-3 px-3">Acb. TT/PNL</th>
+            <th class="py-3 px-3">Acb. Externo</th>
+            <th class="py-3 px-3">Caren. Frontal</th>
+            <th class="py-3 px-3">Bojo / Grelha</th>
+            <th class="py-3 px-3">Porta</th>
+            <th class="py-3 px-3">Fluido/Gás</th>
+            <th class="py-3 px-3">Evaporador</th>
+          </tr>
+        `;
+
+        const agrupados = obterDadosAgrupados();
+        if (agrupados.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="11" class="py-8 text-center text-slate-400">Nenhum expositor encontrado.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = agrupados.map(g => `
+          <tr class="hover:bg-emerald-50/40 transition">
+            <td class="py-2.5 px-3 text-center font-extrabold text-base text-emerald-700 bg-emerald-50/60">${g.qtd}</td>
+            <td class="py-2.5 px-3">${badgeFamilia(g.familia)}</td>
+            <td class="py-2.5 px-3 font-bold text-slate-900">${g.modelo}</td>
+            <td class="py-2.5 px-3 font-semibold text-slate-800">${g.comprimento}</td>
+            <td class="py-2.5 px-3">${badgeAcabamento(g.acbTT)}</td>
+            <td class="py-2.5 px-3">${badgeAcabamento(g.acbExterno)}</td>
+            <td class="py-2.5 px-3">${badgeAcabamento(g.carenFrontal)}</td>
+            <td class="py-2.5 px-3 text-xs text-slate-600">${g.bojo} / ${g.grelha}</td>
+            <td class="py-2.5 px-3 text-xs font-medium text-slate-700">${g.porta}</td>
+            <td class="py-2.5 px-3 text-xs font-bold text-slate-700">${g.fluido}</td>
+            <td class="py-2.5 px-3 text-xs text-slate-700">${g.evaporador}</td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    // Exportar para Excel (.xlsx) com duas abas
+    function exportarExcel() {
+      if (itensFiltrados.length === 0) {
+        mostrarToast('Não há dados filtrados para exportar.', 'erro');
+        return;
+      }
+
+      const wb = XLSX.utils.book_new();
+
+      // Aba 1: Relatório Detalhado
+      const linhasDetalhadas = itensFiltrados.map(i => ({
+        'Arquivo': i.arquivo,
+        'ORFA': i.orfa,
+        'Pedido': i.pedido,
+        'Cliente': i.cliente,
+        'Cidade': i.cidade,
+        'Data Entrega': i.dataEntrega,
+        'Família': i.familia,
+        'Modelo': i.modelo,
+        'Comprimento': i.comprimento,
+        'Endereço': i.endereco,
+        'Qtd': i.qtd,
+        'Acb. TT/PNL': i.acbTT,
+        'Acb. Bandeja': i.acbBandeja,
+        'Acb. Externo': i.acbExterno,
+        'Caren. Frontal': i.carenFrontal,
+        'Bojo': i.bojo,
+        'Grelha': i.grelha,
+        'Porta': i.porta,
+        'Fluido/Gás': i.fluido,
+        'Válvula': i.valvula,
+        'Evaporador': i.evaporador,
+        'Iluminação': i.iluminacao,
+        'Obs. Geral': i.obsGeral
+      }));
+      const wsDetalhado = XLSX.utils.json_to_sheet(linhasDetalhadas);
+      XLSX.utils.book_append_sheet(wb, wsDetalhado, 'Relatorio_Detalhado');
+
+      // Aba 2: Resumo Agrupado para Separação
+      const linhasAgrupadas = obterDadosAgrupados().map(g => ({
+        'Qtd Total': g.qtd,
+        'Família': g.familia,
+        'Modelo': g.modelo,
+        'Comprimento': g.comprimento,
+        'Acb. TT/PNL': g.acbTT,
+        'Acb. Externo': g.acbExterno,
+        'Caren. Frontal': g.carenFrontal,
+        'Bojo': g.bojo,
+        'Grelha': g.grelha,
+        'Porta': g.porta,
+        'Fluido/Gás': g.fluido,
+        'Evaporador': g.evaporador
+      }));
+      const wsAgrupado = XLSX.utils.json_to_sheet(linhasAgrupadas);
+      XLSX.utils.book_append_sheet(wb, wsAgrupado, 'Resumo_Separacao');
+
+      // Aba 3: Consolidação de Bojos (Material + Dimensão + Família)
+      const linhasBojos = obterBojosAgrupados().map(b => ({
+        'Família': b.familia,
+        'Material do Bojo': b.material,
+        'Dimensão (Comprimento)': b.dimensao,
+        'Modelos Relacionados': b.modelosLista,
+        'Qtd Total Bojos': b.qtd
+      }));
+      const wsBojos = XLSX.utils.json_to_sheet(linhasBojos);
+      XLSX.utils.book_append_sheet(wb, wsBojos, 'Bojos_Consolidados');
+
+      XLSX.writeFile(wb, 'Relatorio_Compilado_ORFAs.xlsx');
+      mostrarToast('Planilha Excel exportada com 3 abas (Detalhado, Separação e Bojos)!', 'sucesso');
+    }
+
+    // Exportar Relatório Executivo Consolidado em PDF (via impressão formatada do navegador)
+    function exportarPDFExecutivo() {
+      if (itensFiltrados.length === 0) {
+        mostrarToast('Não há dados carregados para gerar o PDF.', 'erro');
+        return;
+      }
+
+      const agora = new Date();
+      document.getElementById('printDataEmissao').textContent =
+        `Emitido em: ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+
+      const cVal = document.getElementById('filterCliente').value;
+      const oVal = document.getElementById('filterOrfa').value;
+      const fVal = document.getElementById('filterFamilia').value;
+      document.getElementById('printFiltrosAtivos').textContent =
+        `Cliente: ${cVal} | ORFA: ${oVal} | Família: ${fVal}`;
+
+      Object.values(chartsInstancias).forEach(chart => {
+        if (chart && typeof chart.resize === 'function') {
+          chart.resize();
+        }
+      });
+
+      mostrarToast('Preparando layout executivo para salvar em PDF...', 'info');
+      setTimeout(() => {
+        window.print();
+      }, 450);
+    }
+  </script>
+</body>
+</html>
