@@ -193,7 +193,7 @@
       <div class="flex flex-wrap items-center gap-2">
         <button id="btnLoadDemo" onclick="carregarDadosExemplo()" class="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 text-xs sm:text-sm font-medium px-3.5 py-2 rounded-xl transition cursor-pointer">
           <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
-          Testar com ORFA 187/2026
+          Testar com Exemplos (ORFAs 170 & 187)
         </button>
         <button id="btnClearAll" onclick="limparDados()" class="hidden inline-flex items-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 text-xs sm:text-sm font-medium px-3 py-2 rounded-xl transition cursor-pointer">
           <i data-lucide="trash-2" class="w-4 h-4"></i>
@@ -297,7 +297,7 @@
           <div>
             <label class="block text-xs font-medium text-slate-600 mb-1">Busca Livre (Modelo, Acabamento, Gás...)</label>
             <div class="relative">
-              <input type="text" id="filterBusca" oninput="aplicarFiltros()" placeholder="Ex: INOX, R404, 2500, VAP..." class="w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none">
+              <input type="text" id="filterBusca" oninput="aplicarFiltros()" placeholder="Ex: INOX, R404, 2500, VCA2P..." class="w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:bg-white focus:outline-none">
               <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
             </div>
           </div>
@@ -736,30 +736,42 @@
         const matchEntrega = textoPagina.match(/DATA\s*ENTREGA\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i);
         if (matchEntrega) dataEntregaAtual = matchEntrega[1].trim();
 
-        // Dividir a página pelos blocos de equipamentos (ex: "01 IC 2080 (1.1)", "02 VAHP 2500 (7.1-7.2)")
-        const regexCabecalhoItem = /\b(\d{2})\s+([A-Z]{2,}(?:\s+[A-Z]{2,})?)\s+(\d{3,4})\s*\(([^)]+)\)/g;
+        // Identificar todos os títulos de expositores da página (suporta números, '+', '-', '/' como VCA2P, VCA2P + VCAG-19IP, VILP 3P)
+        const regexCabecalhoItem = /(?:^|\n)\s*(\d{2})\s+([A-Z0-9][A-Z0-9+\-\/\s]{1,35}?)\s+(\d{3,4})\s*\(([^)]+)\)/g;
         let matches = [];
         let m;
         while ((m = regexCabecalhoItem.exec(textoPagina)) !== null) {
+          const modeloCandidato = m[2].trim().replace(/\s+/g, ' ');
+          if (/^(ORFA|PEDIDO|DATA|CLIENTE|CIDADE|BAIRRO|REPR)/i.test(modeloCandidato)) continue;
           matches.push({
             index: m.index,
             qtd: parseInt(m[1], 10),
-            modelo: m[2].trim(),
+            modelo: modeloCandidato,
             comprimento: m[3].trim(),
             endereco: m[4].trim()
           });
         }
 
+        // Dividir o texto da página em seções correspondentes a cada item (mesmo quando "Lateral Direita" aparece antes do título do item)
+        const indicesLateral = [...textoPagina.matchAll(/Lateral\s+Direita/gi)].map(x => x.index);
+
         for (let k = 0; k < matches.length; k++) {
-          const inicio = matches[k].index;
-          const fim = (k + 1 < matches.length) ? matches[k + 1].index : textoPagina.length;
+          let inicio = matches[k].index;
+          let fim = (k + 1 < matches.length) ? matches[k + 1].index : textoPagina.length;
+
+          if (indicesLateral.length === matches.length) {
+            inicio = indicesLateral[k];
+            fim = (k + 1 < indicesLateral.length) ? indicesLateral[k + 1] : textoPagina.length;
+          } else if (indicesLateral.length > 0 && indicesLateral[0] < matches[0].index) {
+            inicio = (k === 0) ? 0 : matches[k - 1].index;
+          }
+
           const bloco = textoPagina.substring(inicio, fim);
 
           const extrair = (regex) => {
             const res = bloco.match(regex);
             if (!res || !res[1]) return 'NÃO INFORMADO';
             let valor = res[1].trim();
-            // Cortar caso outro rótulo da mesma linha tenha sido capturado junto
             const stopWords = [
               'Acb.', 'Bojo:', 'Grelha:', 'Perf.', 'Caren.', 'Porta', 'Serigrafia:', 
               'Testeira', 'Fluido', 'Válvula:', 'Cx.', 'Evaporador:', 'Iluminação:', 
@@ -830,9 +842,39 @@
       return registros;
     }
 
-    // Carregar Dados Reais de Exemplo (ORFA 187-2026 + Amostras das Famílias)
+    // Carregar Dados Reais de Exemplo (ORFA 170-2026 + ORFA 187-2026)
     function carregarDadosExemplo() {
       const dadosDemo = [
+        {
+          id: 'demo-170-1', arquivo: 'ORFA 170-2026 (2).pdf', orfa: '170/2026 - (RUTH1330)', pedido: 'P260625015C',
+          cliente: 'SUPERMERCADO LIBARDI LTDA (PORANGABA)', cidade: 'PORANGABA - SP', dataEntrega: '25/08/2026',
+          familia: 'AÇOUGUE', modelo: 'VCA2P', comprimento: '3750', endereco: '7.1', qtd: 1,
+          acbTT: 'INOX', acbBandeja: 'INOX', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
+          bojo: 'INOX', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'NÃO INFORMADO',
+          serigrafia: 'PRETA', porta: 'NÃO INFORMADO', fluido: 'R404', valvula: 'SOLDA',
+          evaporador: 'SAÍDA INFERIOR', iluminacao: '3000K', latDireita: 'FECHADA', latEsquerda: 'FECHADA',
+          obsGeral: 'COM ACABAMENTO TRASEIRO INOX'
+        },
+        {
+          id: 'demo-170-2', arquivo: 'ORFA 170-2026 (2).pdf', orfa: '170/2026 - (RUTH1330)', pedido: 'P260625015C',
+          cliente: 'SUPERMERCADO LIBARDI LTDA (PORANGABA)', cidade: 'PORANGABA - SP', dataEntrega: '25/08/2026',
+          familia: 'AÇOUGUE', modelo: 'VCA2P + VCAG-19IP', comprimento: '3750', endereco: '8.1', qtd: 1,
+          acbTT: 'INOX', acbBandeja: 'INOX', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
+          bojo: 'INOX', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'NÃO INFORMADO',
+          serigrafia: 'PRETA', porta: 'NÃO INFORMADO', fluido: 'R404', valvula: 'SOLDA',
+          evaporador: 'SAÍDA INFERIOR', iluminacao: '3000K', latDireita: 'FECHADA', latEsquerda: 'FECHADA',
+          obsGeral: 'GANCHEIRA + APARADOR'
+        },
+        {
+          id: 'demo-170-3', arquivo: 'ORFA 170-2026 (2).pdf', orfa: '170/2026 - (RUTH1330)', pedido: 'P260625015C',
+          cliente: 'SUPERMERCADO LIBARDI LTDA (PORANGABA)', cidade: 'PORANGABA - SP', dataEntrega: '25/08/2026',
+          familia: 'ESPECIAIS', modelo: 'VILP 3P', comprimento: '2500', endereco: '11.1', qtd: 1,
+          acbTT: 'INOX', acbBandeja: 'INOX', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
+          bojo: 'INOX', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'BASCULANTE 100MM',
+          serigrafia: 'PRETA', porta: 'COM PORTA', fluido: 'R404', valvula: 'SOLDA',
+          evaporador: 'SAÍDA INFERIOR', iluminacao: '3000K', latDireita: 'RETA CEGA', latEsquerda: 'RETA CEGA',
+          obsGeral: 'COM PORTAS'
+        },
         {
           id: 'demo-1', arquivo: 'ORFA 187-2026 (2).pdf', orfa: '187/2026 - (AA260068A)', pedido: 'P260703014A',
           cliente: 'DISTRIBUIDORA DE ALIMENTOS JAPAO LTDA', cidade: 'BARUERI - SP', dataEntrega: '14/09/2026',
@@ -902,33 +944,13 @@
           serigrafia: 'PRETA', porta: 'SEM PORTA', fluido: 'R22', valvula: 'ROSCA',
           evaporador: 'SAÍDA INFERIOR', iluminacao: '4000K', latDireita: 'CEGA', latEsquerda: 'NÃO INFORMADO',
           obsGeral: 'NÃO INFORMADO'
-        },
-        {
-          id: 'demo-8', arquivo: 'ORFA 192-2026.pdf', orfa: '192/2026 - (BB260091B)', pedido: 'P260704088B',
-          cliente: 'SUPERMERCADO IRMAOS UNIDOS LTDA', cidade: 'CAMPINAS - SP', dataEntrega: '22/09/2026',
-          familia: 'AÇOUGUE', modelo: 'VRA', comprimento: '2500', endereco: '8.1-8.2', qtd: 2,
-          acbTT: 'INOX', acbBandeja: 'INOX', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
-          bojo: 'INOX', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'BASCULANTE 100MM',
-          serigrafia: 'PRETA', porta: 'COM PORTA', fluido: 'R404', valvula: 'EXPANSÃO',
-          evaporador: 'SAÍDA AÉREA', iluminacao: '3000K', latDireita: 'CEGA', latEsquerda: 'CEGA',
-          obsGeral: 'GANCHEIRA INOX'
-        },
-        {
-          id: 'demo-9', arquivo: 'ORFA 192-2026.pdf', orfa: '192/2026 - (BB260091B)', pedido: 'P260704088B',
-          cliente: 'SUPERMERCADO IRMAOS UNIDOS LTDA', cidade: 'CAMPINAS - SP', dataEntrega: '22/09/2026',
-          familia: 'PADARIA', modelo: 'VR', comprimento: '1875', endereco: '9.1', qtd: 1,
-          acbTT: 'PRETO (P1902)', acbBandeja: 'INOX', acbExterno: 'PRETO (P1902)', carenFrontal: 'PRETO (P1902)',
-          bojo: 'INOX', grelha: 'INOX', perfAluminio: 'PRATA', portaEtiqueta: 'M1502 PRETO',
-          serigrafia: 'PRETA', porta: 'COM PORTA', fluido: 'R22', valvula: 'ROSCA',
-          evaporador: 'SAÍDA INFERIOR', iluminacao: '3000K', latDireita: 'PANORAMICA', latEsquerda: 'PANORAMICA',
-          obsGeral: 'PRATELEIRAS VIDRO'
         }
       ];
 
       todosItens = [...dadosDemo];
-      arquivosProcessados = ['ORFA 187-2026 (2).pdf (Exemplo)', 'ORFA 192-2026.pdf (Exemplo)'];
+      arquivosProcessados = ['ORFA 170-2026 (2).pdf (Exemplo)', 'ORFA 187-2026 (2).pdf (Exemplo)'];
       atualizarInterfaceCompleta();
-      mostrarToast('Dados de exemplo carregados com ORFA e classificação de Famílias atualizadas!', 'sucesso');
+      mostrarToast('Exemplos carregados (ORFAs 170/2026 e 187/2026)!', 'sucesso');
     }
 
     // Limpar todos os dados carregados
@@ -1089,7 +1111,7 @@
         const cls = ativa
           ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
           : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200';
-        return `<button onclick="selecionarAbaFamilia('${fam}')" class="px-3.5 py-2 rounded-xl text-xs font-bold border transition cursor-pointer">${label}</button>`;
+        return `<button onclick="selecionarAbaFamilia('${fam}')" class="px-3.5 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${cls}">${label}</button>`;
       }).join('');
 
       atualizarDashboardsFamilia();
@@ -1389,7 +1411,7 @@
       }
     }
 
-    // Exportar para Excel (.xlsx) com duas abas
+    // Exportar para Excel (.xlsx) com três abas
     function exportarExcel() {
       if (itensFiltrados.length === 0) {
         mostrarToast('Não há dados filtrados para exportar.', 'erro');
