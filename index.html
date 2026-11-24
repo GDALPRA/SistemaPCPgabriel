@@ -49,7 +49,7 @@
     @media print {
       @page {
         size: A4 landscape;
-        margin: 8mm 8mm 10mm 8mm;
+        margin: 12mm 10mm 14mm 10mm;
       }
 
       * {
@@ -58,49 +58,75 @@
         box-shadow: none !important;
       }
 
-      body {
+      html, body {
         background-color: #ffffff !important;
         color: #0f172a !important;
         font-size: 8.5pt !important;
-        line-height: 1.3 !important;
+        line-height: 1.35 !important;
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+        position: static !important;
       }
 
       .no-print {
         display: none !important;
       }
 
+      /* Garante que gráficos em canvas apareçam nitidamente em páginas impressas/PDF */
+      canvas.print-chart-img {
+        display: none !important;
+      }
+
+      .print-chart-snapshot {
+        display: block !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        height: 175px !important;
+        object-fit: contain !important;
+        margin: 0 auto !important;
+      }
+
       .print-only-header {
         display: block !important;
+        position: static !important;
         border-bottom: 2px solid #1e3a8a;
         padding-bottom: 6px;
         margin-bottom: 10px;
+        break-after: avoid;
+        page-break-after: avoid;
       }
 
       .print-only-footer {
         display: flex !important;
+        position: static !important;
         justify-content: space-between;
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        font-size: 7pt;
+        margin-top: 14px;
+        font-size: 7.5pt;
         color: #64748b;
         border-top: 1px solid #cbd5e1;
-        padding-top: 3px;
+        padding-top: 6px;
         background: #ffffff;
+        break-inside: avoid;
+        page-break-inside: avoid;
       }
 
       .main-container {
         max-width: 100% !important;
         width: 100% !important;
+        height: auto !important;
         padding: 0 !important;
         margin: 0 !important;
+        overflow: visible !important;
+        position: static !important;
       }
 
       .print-section {
-        break-inside: avoid;
-        page-break-inside: avoid;
-        margin-bottom: 12px !important;
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+        position: static !important;
+        margin-bottom: 14px !important;
       }
 
       .print-page-break {
@@ -111,60 +137,99 @@
       .card-print {
         border: 1px solid #cbd5e1 !important;
         border-radius: 6px !important;
-        padding: 8px !important;
+        padding: 9px !important;
         background: #ffffff !important;
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+        position: static !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
       }
 
       .chart-box-print {
-        height: 205px !important;
-        max-height: 205px !important;
+        position: relative !important;
+        width: 100% !important;
+        height: 185px !important;
+        min-height: 185px !important;
+        max-height: 195px !important;
+        overflow: hidden !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+
+      .chart-box-print canvas {
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
       }
 
       .table-scroll {
         overflow: visible !important;
+        height: auto !important;
         max-height: none !important;
+        position: static !important;
       }
 
       table {
         width: 100% !important;
         border-collapse: collapse !important;
-        font-size: 7pt !important;
+        font-size: 7.2pt !important;
+        overflow: visible !important;
+        position: static !important;
       }
 
       thead {
         display: table-header-group !important;
+        position: static !important;
       }
 
       tr {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
+        position: static !important;
       }
 
       th, td {
-        padding: 3.5px 4.5px !important;
+        padding: 4px 5px !important;
         border: 1px solid #cbd5e1 !important;
         word-break: normal !important;
         overflow-wrap: break-word !important;
+        hyphens: none !important;
         vertical-align: top !important;
+        position: static !important;
       }
 
       th {
         background-color: #1e293b !important;
         color: #ffffff !important;
         font-weight: 700 !important;
-        font-size: 6.5pt !important;
+        font-size: 6.8pt !important;
         white-space: nowrap !important;
       }
 
       .badge-print {
         display: inline-block !important;
-        padding: 1px 4px !important;
+        padding: 1px 5px !important;
         border-radius: 4px !important;
-        font-size: 6.3pt !important;
+        font-size: 6.5pt !important;
         font-weight: 700 !important;
         border: 1px solid #94a3b8 !important;
         white-space: nowrap !important;
       }
+    }
+
+    .print-chart-snapshot {
+      display: none;
+    }
+
+    /* Banner discreto de aviso caso impressão seja bloqueada em iframe */
+    #printFallbackBanner {
+      display: none;
     }
   </style>
 </head>
@@ -188,6 +253,24 @@
   <div class="print-only-footer">
     <span>Compilador de ORFAs - Produção &amp; Separação</span>
     <span>Documento gerado localmente para programação e separação de peças</span>
+  </div>
+
+  <!-- Aviso caso o ambiente/iframe bloqueie a janela de impressão -->
+  <div id="printFallbackBanner" class="no-print bg-amber-50 border-b border-amber-300 text-amber-950 px-4 py-2.5 text-xs sm:text-sm">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-700 shrink-0"></i>
+        <span id="printFallbackText">A impressão direta foi bloqueada pelo navegador ou pelo preview. Abra em uma nova aba para salvar como PDF.</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="abrirJanelaImpressaoStandalone()" class="px-3 py-1 rounded bg-amber-700 hover:bg-amber-800 text-white font-semibold text-xs cursor-pointer">
+          Abrir em Nova Aba para PDF
+        </button>
+        <button onclick="document.getElementById('printFallbackBanner').style.display='none'" class="px-2.5 py-1 rounded bg-white border border-amber-300 text-amber-900 font-medium text-xs cursor-pointer">
+          Fechar
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Barra Superior -->
@@ -1354,7 +1437,42 @@
       if (charts[canvasId]) {
         charts[canvasId].destroy();
       }
-      charts[canvasId] = new Chart(ctx, { type, data, options });
+      const mergedOptions = Object.assign({
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false
+      }, options || {});
+      charts[canvasId] = new Chart(ctx, { type, data, options: mergedOptions });
+      sincronizarImagemGrafico(canvasId);
+    }
+
+    function sincronizarImagemGrafico(canvasId) {
+      try {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas || !canvas.parentElement) return;
+        const ch = charts[canvasId];
+        if (ch && typeof ch.update === 'function') {
+          ch.update('none');
+        }
+        const dataUrl = canvas.toDataURL('image/png', 1.0);
+        if (!dataUrl || dataUrl === 'data:,') return;
+
+        let img = canvas.parentElement.querySelector(`img[data-chart-snap="${canvasId}"]`);
+        if (!img) {
+          img = document.createElement('img');
+          img.setAttribute('data-chart-snap', canvasId);
+          img.className = 'print-chart-snapshot';
+          img.alt = canvasId;
+          canvas.parentElement.appendChild(img);
+        }
+        img.src = dataUrl;
+      } catch (e) {
+        console.warn('Falha ao gerar snapshot do gráfico:', canvasId, e);
+      }
+    }
+
+    function prepararSnapshotsGraficos() {
+      Object.keys(charts).forEach(id => sincronizarImagemGrafico(id));
     }
 
     function exportarExcel() {
@@ -1442,20 +1560,138 @@
       XLSX.writeFile(wb, `Relatorio_Compilado_ORFAs_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
 
+    function abrirJanelaImpressaoStandalone() {
+      try {
+        prepararSnapshotsGraficos();
+        const reportEl = document.getElementById('reportContent');
+        const headerEl = document.querySelector('.print-only-header');
+        const footerEl = document.querySelector('.print-only-footer');
+        if (!reportEl || reportEl.classList.contains('hidden')) return;
+
+        const win = window.open('', '_blank');
+        if (!win) {
+          const banner = document.getElementById('printFallbackBanner');
+          const txt = document.getElementById('printFallbackText');
+          if (banner && txt) {
+            txt.textContent = 'O pop-up foi bloqueado pelo navegador. Permita pop-ups ou use Ctrl+P / Cmd+P.';
+            banner.style.display = 'block';
+          }
+          return;
+        }
+
+        const clonedReport = reportEl.cloneNode(true);
+        clonedReport.querySelectorAll('.no-print').forEach(el => el.remove());
+
+        // Substitui cada canvas clonado pela imagem snapshot correspondente para garantir impressão limpa
+        clonedReport.querySelectorAll('canvas').forEach(c => {
+          const snap = c.parentElement ? c.parentElement.querySelector('img.print-chart-snapshot') : null;
+          if (snap && snap.src) {
+            const imgClone = document.createElement('img');
+            imgClone.src = snap.src;
+            imgClone.style.maxWidth = '100%';
+            imgClone.style.maxHeight = '185px';
+            imgClone.style.objectFit = 'contain';
+            imgClone.style.display = 'block';
+            imgClone.style.margin = '0 auto';
+            c.replaceWith(imgClone);
+          } else {
+            c.remove();
+          }
+        });
+
+        const htmlDoc = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Relatório Executivo - ORFAs</title>
+  <style>
+    @page { size: A4 landscape; margin: 12mm 10mm 14mm 10mm; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 9pt; color: #0f172a; margin: 0; padding: 12px; background: #fff; }
+    .hdr { border-bottom: 2px solid #1e3a8a; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start; }
+    .hdr h1 { font-size: 13pt; margin: 2px 0 0 0; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
+    .grid-12 { display: grid; grid-template-columns: 5fr 7fr; gap: 10px; margin-bottom: 12px; }
+    .card-print { border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #fff; break-inside: avoid; page-break-inside: avoid; }
+    .print-section { margin-bottom: 14px; }
+    .print-page-break { break-before: page; page-break-before: always; }
+    table { width: 100%; border-collapse: collapse; font-size: 7.5pt; margin-top: 6px; }
+    th { background: #1e293b; color: #fff; padding: 5px; border: 1px solid #cbd5e1; text-align: left; }
+    td { padding: 4px 5px; border: 1px solid #cbd5e1; vertical-align: top; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    .badge-print { display: inline-block; padding: 1px 5px; border: 1px solid #94a3b8; border-radius: 4px; font-size: 7pt; font-weight: bold; margin-right: 3px; }
+    .ftr { margin-top: 14px; padding-top: 6px; border-top: 1px solid #cbd5e1; font-size: 7.5pt; color: #64748b; display: flex; justify-content: space-between; }
+    @media print { .no-print-btn { display: none !important; } body { padding: 0; } }
+  </style>
+</head>
+<body>
+  <div class="no-print-btn" style="margin-bottom:10px;text-align:right;">
+    <button onclick="window.print()" style="padding:6px 12px;background:#e11d48;color:#fff;border:none;border-radius:5px;font-weight:bold;cursor:pointer;">Imprimir / Salvar PDF</button>
+  </div>
+  <div class="hdr">${headerEl ? headerEl.innerHTML : ''}</div>
+  ${clonedReport.innerHTML}
+  <div class="ftr">${footerEl ? footerEl.innerHTML : ''}</div>
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        try { window.print(); } catch (e) {}
+      }, 300);
+    };
+  <\/script>
+</body>
+</html>`;
+
+        win.document.open();
+        win.document.write(htmlDoc);
+        win.document.close();
+      } catch (err) {
+        console.error('Erro ao abrir janela standalone de impressão:', err);
+        const banner = document.getElementById('printFallbackBanner');
+        const txt = document.getElementById('printFallbackText');
+        if (banner && txt) {
+          txt.textContent = 'Não foi possível abrir a janela de impressão automaticamente. Use Ctrl+P / Cmd+P no navegador.';
+          banner.style.display = 'block';
+        }
+      }
+    }
+
     function exportarPDFExecutivo() {
       const cliente = document.getElementById('filterCliente').value;
       const orfa = document.getElementById('filterOrfa').value;
       const familia = document.getElementById('filterFamilia').value;
       updatePrintHeaderMeta(cliente, orfa, familia);
+      prepararSnapshotsGraficos();
 
-      Object.values(charts).forEach(ch => {
-        if (ch && typeof ch.resize === 'function') ch.resize();
-      });
+      const banner = document.getElementById('printFallbackBanner');
+      if (banner) banner.style.display = 'none';
+
+      // Detecta se está dentro de um iframe com restrição de impressão ou se window.print falha
+      const isInIframe = window.self !== window.top;
 
       setTimeout(() => {
-        window.print();
-      }, 150);
+        try {
+          window.print();
+          // Em alguns iframes sandboxed, window.print() não lança exceção mas é ignorado silenciosamente
+          if (isInIframe) {
+            const txt = document.getElementById('printFallbackText');
+            if (banner && txt) {
+              txt.textContent = 'Se a janela de impressão não abriu dentro do Preview, clique para abrir o relatório em uma nova aba e salvar como PDF.';
+              banner.style.display = 'block';
+              lucide.createIcons();
+            }
+          }
+        } catch (err) {
+          console.warn('window.print() bloqueado ou falhou, tentando fallback:', err);
+          abrirJanelaImpressaoStandalone();
+        }
+      }, 200);
     }
+
+    window.addEventListener('beforeprint', () => {
+      prepararSnapshotsGraficos();
+    });
 
     function limparTudo() {
       allItems = [];
