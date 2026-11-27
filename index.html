@@ -15,6 +15,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--ink:#14232a;--side:#12262e;--paper:#f3f4f2;--acc:#0e7490;--line:#d9dedb}
@@ -80,25 +82,51 @@ input:focus,select:focus,.btn:focus-visible,.nav a:focus-visible{outline:2px sol
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 /* ================= PERFIS DE ACESSO ================= */
-const ALL=['dashboard','pedidos','familias','bojos','refrig','separacao','op_injecao','historico','usuarios'];
+const MODULOS_ENG=['bandejas_pead','chapas_cristal','chapas_inox','portas_frames','tubos_chassis','materiais_padrao'];
+const ALL=['dashboard','pedidos','familias','bojos','refrig','separacao','op_injecao',...MODULOS_ENG,'historico','usuarios'];
 const ROLES={
   admin:{label:'Administrador',pages:ALL,can:['import','export','delete','users']},
   pcp:{label:'PCP / Programação',pages:ALL.filter(p=>p!=='usuarios'),can:['import','export']},
-  separacao:{label:'Separação de peças',pages:['separacao'],can:['export']},
-  bojos:{label:'Setor de Bojos',pages:['bojos'],can:['export']},
-  leitura:{label:'Somente leitura',pages:['dashboard','pedidos','familias','op_injecao'],can:[]}
+  separacao:{label:'Separação de peças',pages:['separacao','materiais_padrao'],can:['export']},
+  bojos:{label:'Setor de Bojos',pages:['bojos','bandejas_pead'],can:['export']},
+  leitura:{label:'Somente leitura',pages:['dashboard','pedidos','familias','op_injecao',...MODULOS_ENG],can:[]}
 };
-const PAGES={dashboard:'Dashboard',pedidos:'Pedidos / ORFAs',familias:'Famílias',bojos:'Bojos',refrig:'Refrigeração',separacao:'Separação',op_injecao:'OP INJEÇÃO',historico:'Histórico de PDFs',usuarios:'Usuários e acessos'};
+const PAGES={
+  dashboard:'Dashboard',
+  pedidos:'Pedidos / ORFAs',
+  familias:'Famílias',
+  bojos:'Bojos',
+  refrig:'Refrigeração',
+  separacao:'Separação',
+  op_injecao:'OP INJEÇÃO',
+  bandejas_pead:'Bandejas & PEAD',
+  chapas_cristal:'Chapas Cristal (VA)',
+  chapas_inox:'Chapas Inox',
+  portas_frames:'Portas & Frames',
+  tubos_chassis:'Tubos / Chassis',
+  materiais_padrao:'Materiais Padrão',
+  historico:'Histórico de PDFs',
+  usuarios:'Usuários e acessos'
+};
 const FAMS={'VERTICAL ALTO':'#2563eb','AÇOUGUE':'#dc2626','PADARIA':'#d97706','ESPECIAIS':'#7c3aed','A DEFINIR':'#64748b'};
 const PAL=['#0e7490','#d97706','#7c3aed','#dc2626','#059669','#2563eb','#db2777','#65a30d'];
 
 /* ================= ESTADO ================= */
 let user=null,imports=[],items=[],page='dashboard',famSel=null,visao='detalhada',tipoPecaFiltro='ALL',charts={};
 const F={cliente:'ALL',orfa:'ALL',busca:''};
+const MP={
+  solicitante:'Gabriel Dalpra',
+  setor:'PCP',
+  categoria:'Todas',
+  busca:'',
+  selecoes:{} // chave: cod -> {modo, val}
+};
 const can=a=>user&&ROLES[user.role].can.includes(a);
 const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const $=id=>document.getElementById(id);
 const sum=a=>a.reduce((s,i)=>s+i.qtd,0);
+const fmtPt=n=>Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtInt=n=>Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:0});
 
 /* ================= BANCO LOCAL (IndexedDB) ================= */
 const idb=()=>new Promise((ok,no)=>{const r=indexedDB.open('erp_orfas',1);r.onupgradeneeded=()=>r.result.createObjectStore('imports',{keyPath:'id'});r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
@@ -133,12 +161,20 @@ async function start(){
 function famsPresent(){return [...new Set(items.map(i=>i.familia))].sort()}
 function renderNav(){
   const allowed=ROLES[user.role].pages;let h='<div class="grp">Módulos</div>';
+  let engAdded=false;
   for(const p of allowed){
     if(p==='familias'){
       h+=`<div class="grp">Famílias de expositores</div>`;
       const fl=famsPresent();
       h+=fl.length?fl.map(f=>`<a class="${page==='familias'&&famSel===f?'on':''}" onclick="go('familias','${esc(f)}')"><span>${esc(f)}</span><span>${sum(items.filter(i=>i.familia===f))}</span></a>`).join(''):'<div class="px-4 py-1 text-xs text-slate-400">Importe PDFs para ver as famílias</div>';
       h+='<div class="grp">Outros módulos</div>';continue;
+    }
+    if(MODULOS_ENG.includes(p)&&!engAdded){
+      h+='<div class="grp">Engenharia & Cálculo (PDF)</div>';
+      engAdded=true;
+    }
+    if(p==='historico'){
+      h+='<div class="grp">Sistema</div>';
     }
     h+=`<a class="${page===p?'on':''}" onclick="go('${p}')"><span>${PAGES[p]}</span></a>`;
   }
@@ -150,13 +186,25 @@ function go(p,fam){page=p;if(p==='familias')famSel=fam||famSel||famsPresent()[0]
 const filtered=()=>items.filter(i=>(F.cliente==='ALL'||i.cliente===F.cliente)&&(F.orfa==='ALL'||i.orfa===F.orfa)&&(!F.busca||Object.values(i).join(' ').toLowerCase().includes(F.busca)));
 function renderFilters(){
   const opt=(k,all)=>`<option value="ALL">${all}</option>`+[...new Set(items.map(i=>i[k]))].sort().map(v=>`<option ${F[k]===v?'selected':''} value="${esc(v)}">${esc(v)}</option>`).join('');
-  const show=['dashboard','pedidos','familias','bojos','refrig','separacao','op_injecao'].includes(page);
+  const show=['dashboard','pedidos','familias','bojos','refrig','separacao','op_injecao','bandejas_pead','chapas_cristal','chapas_inox','portas_frames','tubos_chassis'].includes(page);
   $('filters').style.display=show?'flex':'none';
   $('filters').innerHTML=`<select onchange="F.cliente=this.value;render()">${opt('cliente','Todos os clientes')}</select>
   <select onchange="F.orfa=this.value;render()">${opt('orfa','Todas as ORFAs')}</select>
   <input class="flex-1 min-w-[180px]" placeholder="Buscar modelo, acabamento, gás, obs..." value="${esc(F.busca)}" oninput="F.busca=this.value.toLowerCase();clearTimeout(window._t);window._t=setTimeout(render,250)">
   <button class="btn sec" onclick="window.print()">Imprimir / PDF</button>
   ${can('export')?'<button class="btn" onclick="exportExcel()">Exportar Excel</button>':''}`;
+}
+
+/* ================= HELPERS DE CONVERSÃO DOS ITENS DA ORFA ================= */
+function compEmMetros(item){
+  const raw=String(item.comprimento||'').replace(',','.').trim();
+  const n=parseFloat(raw);
+  if(!n||isNaN(n))return 0;
+  return n>10 ? n/1000 : n;
+}
+function textoAlinhamentoItem(item){
+  const partes=[item.modelo, item.comprimento ? `${item.comprimento}mm` : '', item.porta, item.acbExt, item.acbTt, item.obsGeral].filter(x=>x&&x!=='-');
+  return partes.join(' ').toUpperCase();
 }
 
 /* ================= REGRAS OP INJEÇÃO ================= */
@@ -228,6 +276,758 @@ function groupInjecao(L,sequencial=false,porFamiliaPeca=false,tipoPeca='ALL'){
     return arr.sort((a,b)=>(GRUPO_ORD[a.grupoLinha]??99)-(GRUPO_ORD[b.grupoLinha]??99)||(TIPO_ORD[a.tipo]??99)-(TIPO_ORD[b.tipo]??99)||b.compNum-a.compNum||a.peca.localeCompare(b.peca));
   }
   return arr.sort((a,b)=>b.qtd-a.qtd);
+}
+
+/* ================= 1. BANDEJAS ABS & PEAD ================= */
+const FATORES_BANDEJAS={
+  VCA2P:{C790:4,C530:8,C410:0},
+  VRA2P:{C790:4,C530:0,C410:8},
+  VRA1P:{C790:4,C530:0,C410:4},
+  VRAG:{C790:4,C530:0,C410:0},
+  VCAG:{C790:4,C530:0,C410:0}
+};
+const MODELOS_BANDEJAS=Object.keys(FATORES_BANDEJAS);
+
+function extrairModulosPorModelo(textoAlinhamento,dimensaoTotal){
+  const texto=String(textoAlinhamento||'').toUpperCase().replace(',','.');
+  const modulosPorModelo={};
+  const encontrados=[...texto.matchAll(/([A-Z0-9]+)\s*\(([\d.]+)\)/g)];
+  if(encontrados.length){
+    for(const [,modelo,tamanhoStr] of encontrados){
+      if(MODELOS_BANDEJAS.includes(modelo)){
+        const metragem=parseFloat(tamanhoStr);
+        if(!isNaN(metragem)){
+          modulosPorModelo[modelo]=(modulosPorModelo[modelo]||0)+(metragem/1.25);
+        }
+      }
+    }
+  }
+  if(!Object.keys(modulosPorModelo).length){
+    for(const modelo of MODELOS_BANDEJAS){
+      if(texto.includes(modelo)){
+        modulosPorModelo[modelo]=dimensaoTotal>0?(dimensaoTotal/1.25):0;
+        break;
+      }
+    }
+  }
+  return modulosPorModelo;
+}
+
+function calcBandejasPead(L){
+  const detalhada=[];
+  for(const it of L){
+    const dim=compEmMetros(it);
+    const qtdItem=Number(it.qtd)||1;
+    const alinh=textoAlinhamentoItem(it);
+    const modDict=extrairModulosPorModelo(alinh,dim);
+    for(const [modelo,modUnit] of Object.entries(modDict)){
+      const modQtd=modUnit*qtdItem;
+      const fat=FATORES_BANDEJAS[modelo]||{C790:0,C530:0,C410:0};
+      const c790=Math.round(modQtd*fat.C790);
+      const c530=Math.round(modQtd*fat.C530);
+      const c410=Math.round(modQtd*fat.C410);
+      const totalAbs=c790+c530+c410;
+      detalhada.push({
+        cliente:it.cliente,
+        orfa:it.orfa,
+        modelo,
+        modulos:modQtd,
+        c790,c530,c410,
+        totalAbs
+      });
+    }
+  }
+
+  const mapCli=new Map();
+  const mapMod=new Map();
+  for(const r of detalhada){
+    const kc=`${r.cliente}|${r.orfa}|${r.modelo}`;
+    if(!mapCli.has(kc))mapCli.set(kc,{cliente:r.cliente,orfa:r.orfa,modelo:r.modelo,modulos:0,c790:0,c530:0,c410:0,totalAbs:0});
+    const gc=mapCli.get(kc);
+    gc.modulos+=r.modulos;gc.c790+=r.c790;gc.c530+=r.c530;gc.c410+=r.c410;gc.totalAbs+=r.totalAbs;
+
+    if(!mapMod.has(r.modelo))mapMod.set(r.modelo,{modelo:r.modelo,modulos:0,c790:0,c530:0,c410:0,totalAbs:0});
+    const gm=mapMod.get(r.modelo);
+    gm.modulos+=r.modulos;gm.c790+=r.c790;gm.c530+=r.c530;gm.c410+=r.c410;gm.totalAbs+=r.totalAbs;
+  }
+
+  const porCliente=[...mapCli.values()];
+  const geralModelo=[...mapMod.values()];
+  const totC790=geralModelo.reduce((s,x)=>s+x.c790,0);
+  const totC530=geralModelo.reduce((s,x)=>s+x.c530,0);
+  const totC410=geralModelo.reduce((s,x)=>s+x.c410,0);
+
+  const placasC790=Math.ceil(totC790/1.0);
+  const placasC530=Math.ceil(totC530/1.0);
+  const placasC410=Math.ceil(totC410/2.0);
+
+  const pead=[
+    {medida:'1000 × 510 mm',espessura:'5,5 mm',tipoBandeja:'L290 × C790 (REF. MAIOR)',qtdPlacas:placasC790,pesoUnit:2.50,pesoTotal:Number((placasC790*2.50).toFixed(2))},
+    {medida:'750 × 500 mm',espessura:'5,5 mm',tipoBandeja:'L290 × C530 (REF. MÉDIA)',qtdPlacas:placasC530,pesoUnit:1.84,pesoTotal:Number((placasC530*1.84).toFixed(2))},
+    {medida:'780 × 600 mm',espessura:'5,5 mm',tipoBandeja:'L290 × C410 (REF. MENOR - 2 un/placa)',qtdPlacas:placasC410,pesoUnit:2.29,pesoTotal:Number((placasC410*2.29).toFixed(2))}
+  ];
+
+  return {
+    detalhada,
+    porCliente,
+    geralModelo,
+    pead,
+    totalClientes:new Set(porCliente.map(x=>x.cliente)).size,
+    totalModulos:detalhada.reduce((s,x)=>s+x.modulos,0),
+    totalBandejasAbs:detalhada.reduce((s,x)=>s+x.totalAbs,0),
+    totalPesoPead:pead.reduce((s,x)=>s+x.pesoTotal,0)
+  };
+}
+
+/* ================= 2. CHAPAS CRISTAL (VA) ================= */
+const DENSIDADE_M2=3.3759;
+const PESO_CH_2550=(1.20*2.55)*DENSIDADE_M2;
+const PESO_CH_3780=(1.20*3.78)*DENSIDADE_M2;
+const PESO_CH_4000=(1.20*4.00)*DENSIDADE_M2;
+
+function calcChapasCristal(L){
+  const detalhamento=[];
+  let t2550=0,t3780=0,t4000=0;
+  for(const it of L){
+    const dimFloat=compEmMetros(it);
+    const qtd=Number(it.qtd)||1;
+    let ch2550=0,ch3780=0,ch4000=0;
+    if([1.25,1.5,2.25,2.5].includes(dimFloat)){
+      ch2550=7*qtd;
+    } else if([1.87,3.0].includes(dimFloat)){
+      ch3780=7*qtd;
+    } else if(dimFloat===3.75){
+      ch4000=1*qtd;
+      ch3780=6*qtd;
+    }
+    t2550+=ch2550;t3780+=ch3780;t4000+=ch4000;
+    const pesoItem=Number(((ch2550*PESO_CH_2550)+(ch3780*PESO_CH_3780)+(ch4000*PESO_CH_4000)).toFixed(2));
+    detalhamento.push({
+      cliente:it.cliente,
+      orfa:it.orfa,
+      linha:it.familia||'VERTICAL ALTO',
+      dimensao:it.comprimento||dimFloat,
+      alinhamento:it.modelo,
+      ch2550,ch3780,ch4000,
+      totalChapas:ch2550+ch3780+ch4000,
+      pesoTotal:pesoItem
+    });
+  }
+  const p2550=t2550*PESO_CH_2550;
+  const p3780=t3780*PESO_CH_3780;
+  const p4000=t4000*PESO_CH_4000;
+  const resumo=[
+    {tipo:'Chapa 2550',dim:'0,43 x 1200 x 2550',qtd:t2550,peso:Number(p2550.toFixed(2))},
+    {tipo:'Chapa 3780',dim:'0,43 x 1200 x 3780',qtd:t3780,peso:Number(p3780.toFixed(2))},
+    {tipo:'Chapa 4000',dim:'0,43 x 1200 x 4000',qtd:t4000,peso:Number(p4000.toFixed(2))}
+  ];
+  return {
+    detalhamento,
+    resumo,
+    t2550,t3780,t4000,
+    totalChapas:t2550+t3780+t4000,
+    pesoTotal:p2550+p3780+p4000
+  };
+}
+
+/* ================= 3. CHAPAS INOX ================= */
+const DENSIDADE_INOX=7.93;
+const PESO_INOX={
+  c157219:0.80*1.24*3.90*DENSIDADE_INOX,
+  c053583:0.60*1.24*2.56*DENSIDADE_INOX,
+  c104818:0.60*1.24*2.00*DENSIDADE_INOX,
+  c157228:0.60*1.24*3.84*DENSIDADE_INOX,
+  c156102:1.20*1.24*2.96*DENSIDADE_INOX,
+  c153549:0.40*1.24*2.54*DENSIDADE_INOX,
+  c156082:0.40*1.24*3.78*DENSIDADE_INOX,
+  c151947:0.40*1.24*2.55*DENSIDADE_INOX,
+  c157101:0.40*1.24*2.06*DENSIDADE_INOX
+};
+
+function extrairModulosAcougue(textoAlinhamento){
+  const texto=String(textoAlinhamento||'').toUpperCase();
+  const res={p1:0,p2:0};
+  const matches=[...texto.matchAll(/(1P|2P|G)?\s*\(?([0-9]+[,.][0-9]+)\)?/g)];
+  for(const [,tipo,medStr] of matches){
+    const med=parseFloat(medStr.replace(',','.'));
+    if(!isNaN(med)){
+      const mod125=med/1.25;
+      const t=(tipo||'').trim();
+      if(t.includes('2P'))res.p2+=mod125;
+      else if(t.includes('1P'))res.p1+=mod125;
+    }
+  }
+  return res;
+}
+
+function calcChapasInox(L){
+  const detalhamento=[];
+  let tot={c157219:0,c053583:0,c104818:0,c157228:0,c156102:0,c153549:0,c156082:0,c151947:0,c157101:0};
+
+  for(const it of L){
+    const linha=String(it.familia||'VERTICAL ALTO').toUpperCase();
+    const alinh=textoAlinhamentoItem(it);
+    const dimFloat=compEmMetros(it);
+    const qtd=Number(it.qtd)||1;
+    const isVap=/\bVAP/.test(alinh)||/\bVAP/.test(String(it.modelo||'').toUpperCase());
+    const isVra=linha.includes('VRA')||/\bVRA/.test(alinh);
+    const isVca=(linha.includes('VCA')||linha.includes('AÇOUGUE')||/\bVCA/.test(alinh))&&!isVra;
+    const isAcougue=isVca||isVra;
+
+    let c157219=0,c053583=0,c104818=0,c157228=0,c156102=0,c153549=0,c156082=0,c151947=0,c157101=0;
+
+    if(isVra){
+      const modEquiv=dimFloat>0?(dimFloat/1.25):1.0;
+      const bandejasTot=(dimFloat===1.87||dimFloat===1.875)?(2*qtd):(modEquiv*3*qtd);
+      c157219+=bandejasTot/8.0;
+
+      const infoPrat=extrairModulosAcougue(alinh);
+      if(infoPrat.p1>0||infoPrat.p2>0){
+        c157219+=(((infoPrat.p1*1)+(infoPrat.p2*2))*qtd)/6.0;
+      } else if(alinh.includes(' 1P')||alinh.includes(' 2P')){
+        const nNiveis=alinh.includes(' 2P')?2:1;
+        const modTot=Number((dimFloat/1.25).toFixed(2));
+        c157219+=((modTot*nNiveis)*qtd)/6.0;
+      }
+    } else if(isVca){
+      const modEquiv=dimFloat>0?(dimFloat/1.25):1.0;
+      const bandejasTot=(dimFloat===1.87||dimFloat===1.875)?(2*qtd):(modEquiv*3*qtd);
+      c157219+=bandejasTot/8.0;
+
+      if(dimFloat===2.0)c157219+=(1*qtd)/4.0;
+      else if(dimFloat===2.5)c157219+=(2*qtd)/12.0;
+      else if(dimFloat===3.75)c157219+=(3*qtd)/12.0;
+      else if(dimFloat===1.87||dimFloat===1.875)c157219+=(1*qtd)/8.0;
+      else c157219+=(1*qtd)/12.0;
+    } else if(!isAcougue){
+      if(dimFloat===1.87){
+        c157219+=(10*qtd)/12.0;
+        c157219+=(10*qtd)/22.0;
+        c157219+=(1*qtd)/6.0;
+      } else if(isVap){
+        const mod075=Math.round(dimFloat/0.75);
+        c157219+=((mod075*10)*qtd)/18.0;
+        c157219+=((mod075*1)*qtd)/9.0;
+      } else {
+        let mod125=Number((dimFloat/1.25).toFixed(2));
+        if(dimFloat===2.25)mod125=2.0;
+        else if(dimFloat===3.0)mod125=2.5;
+        c157219+=((mod125*10)*qtd)/12.0;
+        c157219+=((mod125*1)*qtd)/6.0;
+      }
+    }
+
+    if([1.25,1.5,2.0,2.25,2.5].includes(dimFloat)){
+      c153549=dimFloat===1.25?Math.ceil(qtd/2.0):Number(qtd);
+    } else if([1.87,1.875,3.0,3.75].includes(dimFloat)){
+      c156082=(dimFloat===1.87||dimFloat===1.875)?Math.ceil(qtd/2.0):Number(qtd);
+    }
+
+    if(isVra){
+      if(dimFloat===2.0||dimFloat===2.5)c053583+=qtd*2.0;
+      else if(dimFloat===1.25)c053583+=Number(qtd);
+      else if(dimFloat===3.75)c157228+=qtd*2.0;
+      else if(dimFloat===1.87||dimFloat===1.875)c157228+=Number(qtd);
+
+      if(dimFloat===1.25)c156102+=(2*qtd)/4.0;
+      else if([1.87,1.875,2.0,2.5].includes(dimFloat))c156102+=(4*qtd)/4.0;
+      else if(dimFloat===3.75)c156102+=(6*qtd)/4.0;
+    }
+
+    if(isVca){
+      if(dimFloat===1.25)c156102+=(2*qtd)/5.0;
+      else if([1.87,1.875,2.0,2.5].includes(dimFloat))c156102+=(4*qtd)/5.0;
+      else if(dimFloat===3.75)c156102+=(6*qtd)/5.0;
+    }
+
+    if(isAcougue){
+      if(dimFloat===2.5)c151947+=qtd/2.0;
+      else if(dimFloat===1.25)c151947+=qtd/4.0;
+      else if(dimFloat===3.75)c157101+=Number(qtd);
+      else if([2.0,1.87,1.875].includes(dimFloat))c157101+=qtd/2.0;
+
+      if(dimFloat===2.5)c053583+=qtd/2.0;
+      else if(dimFloat===1.25)c053583+=qtd/4.0;
+      else if(dimFloat===3.75)c104818+=Number(qtd);
+      else if([2.0,1.87,1.875].includes(dimFloat))c104818+=qtd/2.0;
+    } else {
+      if(dimFloat===1.25){
+        c053583+=((1*3)*qtd)/4.0+(qtd/4.0);
+      } else if(dimFloat===1.5){
+        c053583+=((2*3)*qtd)/6.0+(qtd/2.0);
+      } else if(dimFloat===1.87||dimFloat===1.875){
+        c053583+=(3*qtd)/4.0;
+        c104818+=((3*qtd)/6.0)+((1*qtd)/2.0);
+      } else if(dimFloat===2.25){
+        c053583+=((3*3)*qtd)/6.0+(qtd/2.0);
+      } else if(dimFloat===2.5){
+        c053583+=((2*3)*qtd)/4.0+(qtd/2.0);
+      } else if(dimFloat===3.0){
+        c053583+=((4*3)*qtd)/6.0+((2*qtd)/2.0);
+      } else if(dimFloat===3.75){
+        c053583+=((3*3)*qtd)/4.0;
+        c104818+=(2*qtd)/2.0;
+      }
+    }
+
+    const itemVals={c157219,c053583,c104818,c157228,c156102,c153549,c156082,c151947,c157101};
+    let pesoItem=0;
+    for(const k of Object.keys(itemVals)){
+      tot[k]+=itemVals[k];
+      pesoItem+=itemVals[k]*PESO_INOX[k];
+    }
+
+    detalhamento.push({
+      cliente:it.cliente,
+      orfa:it.orfa,
+      linha,
+      dimensao:it.comprimento||dimFloat,
+      alinhamento:it.modelo,
+      c157219:Number(c157219.toFixed(2)),
+      c053583:Number(c053583.toFixed(2)),
+      c104818:Number(c104818.toFixed(2)),
+      c157228:Number(c157228.toFixed(2)),
+      c156102:Number(c156102.toFixed(2)),
+      c153549:Number(c153549.toFixed(2)),
+      c156082:Number(c156082.toFixed(2)),
+      c151947:Number(c151947.toFixed(2)),
+      c157101:Number(c157101.toFixed(2)),
+      pesoTotal:Number(pesoItem.toFixed(2))
+    });
+  }
+
+  const catalog=[
+    {key:'c157219',cod:'157219',label:'0,8 (3900)',desc:'CH 0.80 x 1240 x 3900 INOX 304'},
+    {key:'c053583',cod:'053583',label:'0,6 (2560)',desc:'CH 0.60 x 1240 x 2560 INOX 304'},
+    {key:'c104818',cod:'104818',label:'0,6 (2000)',desc:'CH 0.60 x 1240 x 2000 INOX 304'},
+    {key:'c157228',cod:'157228',label:'0,6 (3840 VRA)',desc:'CH 0.60 x 1240 x 3840 INOX 304'},
+    {key:'c156102',cod:'156102',label:'1,2 (2960 Colunas)',desc:'CH 1.20 x 1240 x 2960 INOX 304'},
+    {key:'c153549',cod:'153549',label:'0,4 (2540)',desc:'CH 0.40 x 1240 x 2540 INOX 304'},
+    {key:'c156082',cod:'156082',label:'0,4 (3780)',desc:'CH 0.40 x 1240 x 3780 INOX 304'},
+    {key:'c151947',cod:'151947',label:'0,4 (2550)',desc:'CH 0.40 x 1240 x 2550 INOX 430'},
+    {key:'c157101',cod:'157101',label:'0,4 (2060)',desc:'CH 0.40 x 1240 x 2060 INOX 430'}
+  ];
+
+  const resumo=catalog.map(c=>({
+    ...c,
+    qtd:Number(tot[c.key].toFixed(2)),
+    peso:Number((tot[c.key]*PESO_INOX[c.key]).toFixed(2))
+  })).filter(r=>r.qtd>0);
+
+  const totalChapas=Number(Object.values(tot).reduce((s,v)=>s+v,0).toFixed(2));
+  const pesoTotal=Object.keys(tot).reduce((s,k)=>s+(tot[k]*PESO_INOX[k]),0);
+
+  return {detalhamento,resumo,totalChapas,pesoTotal};
+}
+
+/* ================= 4. PORTAS, FRAMES & EXPOSITORES ABERTOS ================= */
+const CODIGOS_PORTAS_VA={
+  'PRETA|SERIGRAFADA|DIR':'153828',
+  'PRETA|SERIGRAFADA|ESQ':'153829',
+  'PRETA|TRANSPARENTE|DIR':'153830',
+  'PRETA|TRANSPARENTE|ESQ':'153831',
+  'CINZA|SERIGRAFADA|DIR':'153318',
+  'CINZA|SERIGRAFADA|ESQ':'153319',
+  'CINZA|TRANSPARENTE|DIR':'153832',
+  'CINZA|TRANSPARENTE|ESQ':'153833'
+};
+const CODIGOS_PORTAS_VAP={CINZA:'154222',PRETA:'154221'};
+const CODIGOS_FRAMES_VA={
+  'CINZA|1250':'154183','CINZA|1875':'154678','CINZA|2500':'154157','CINZA|3750':'154158',
+  'PRETA|1250':'154184','PRETA|1875':'162726','PRETA|2500':'153826','PRETA|3750':'153827'
+};
+const CODIGOS_QUADROS_VAP={
+  'CINZA|1500':'154220','CINZA|2250':'154219','CINZA|3000':'154218','CINZA|3750':'154217',
+  'PRETA|1500':'154216','PRETA|2250':'154215','PRETA|3000':'154214','PRETA|3750':'154213'
+};
+const CHAVES_PORTAS_MM=[1250,1500,1875,2250,2500,3000,3750];
+
+function convDimPortasMm(valDim){
+  const val=parseFloat(String(valDim??1.25).replace(',','.'));
+  if(isNaN(val))return 1250;
+  if(val>=1.85&&val<=1.89)return 1875;
+  const mm=val<=10.0?Math.round(val*1000):Math.round(val);
+  return CHAVES_PORTAS_MM.reduce((best,cur)=>Math.abs(cur-mm)<Math.abs(best-mm)?cur:best,CHAVES_PORTAS_MM[0]);
+}
+
+function calcPortasFrames(L){
+  const filtrado=L.filter(it=>{
+    const lin=String(it.familia||'').toUpperCase();
+    const mod=String(it.modelo||'').toUpperCase();
+    const alinh=textoAlinhamentoItem(it);
+    return lin.includes('VA')||mod.includes('VA')||alinh.includes('VA')||alinh.includes('VAP');
+  });
+
+  const detalhada=[];
+  const abertos=[];
+  const mapPortas=new Map();
+  const mapFrames=new Map();
+
+  const addPorta=(cod,modeloPorta,qtd)=>{
+    const k=`${cod}|${modeloPorta}`;
+    if(!mapPortas.has(k))mapPortas.set(k,{cod,modeloPorta,qtd:0});
+    mapPortas.get(k).qtd+=qtd;
+  };
+  const addFrame=(cod,modeloFrame,qtd)=>{
+    const k=`${cod}|${modeloFrame}`;
+    if(!mapFrames.has(k))mapFrames.set(k,{cod,modeloFrame,qtd:0});
+    mapFrames.get(k).qtd+=qtd;
+  };
+
+  for(const it of filtrado){
+    const alinh=String(it.modelo||'N/A').trim();
+    const modUpper=alinh.toUpperCase();
+    const alinhUpper=textoAlinhamentoItem(it);
+    const dimVal=compEmMetros(it)||1.25;
+    const qtdExp=Number(it.qtd)||1;
+
+    const isVap=/\bVAP\b/.test(modUpper);
+    const isPvt=/\bPVT\b/.test(modUpper);
+    const temPortaModelo=/\bVA[A-Z0-9]*P\b/.test(modUpper)&&!/\bVAP\b/.test(modUpper);
+    const usaPorta=isVap||isPvt||temPortaModelo;
+
+    if(!usaPorta){
+      abertos.push({
+        cliente:it.cliente,
+        orfa:it.orfa,
+        alinhamento:alinh,
+        tipo:'EXPOSITOR ABERTO (S/ PORTA)',
+        dimensao:dimVal,
+        qtdExp,
+        obs:'Requer programação manual de vidros'
+      });
+      continue;
+    }
+
+    let serigrafia='PRETA';
+    if(alinhUpper.includes('CINZA'))serigrafia='CINZA';
+    else if(alinhUpper.includes('PRETO')||alinhUpper.includes('PRETA'))serigrafia='PRETA';
+
+    const dimMm=convDimPortasMm(dimVal);
+
+    if(isVap){
+      const numMap={1500:2,2250:3,3000:4,3750:5};
+      const qtdPortasVap=(numMap[dimMm]??Math.round(dimMm/750))*qtdExp;
+      const codPorta=CODIGOS_PORTAS_VAP[serigrafia]||'S/COD';
+      const descPorta=`PORTA CONG DIR 730X1714 ${serigrafia}`;
+      const codQuadro=CODIGOS_QUADROS_VAP[`${serigrafia}|${dimMm}`]||'S/COD';
+      const descQuadro=`QUADRO ${dimMm}X1735 CONGELADOS ${serigrafia}`;
+      const qtdQuadros=1*qtdExp;
+
+      addPorta(codPorta,descPorta,qtdPortasVap);
+      addFrame(codQuadro,descQuadro,qtdQuadros);
+
+      detalhada.push({
+        cliente:it.cliente,orfa:it.orfa,alinhamento:alinh,tipo:'VAP (Congelados)',
+        dimensao:dimVal,qtdExp,
+        codEsq:'-',qtdEsq:0,
+        codDir:codPorta,qtdDir:qtdPortasVap,
+        totalPortas:qtdPortasVap,
+        codFrame:codQuadro,frameDesc:descQuadro,qtdFrames:qtdQuadros
+      });
+    } else {
+      const tipoPortaDesc=isPvt?'TRANSPARENTE':'SERIGRAFADA';
+      let qtdEsq=0,qtdDir=0;
+      if(dimMm===1875){
+        qtdEsq=1*qtdExp;
+        qtdDir=2*qtdExp;
+      } else {
+        const pares=Math.round(dimMm/1250);
+        qtdEsq=pares*qtdExp;
+        qtdDir=pares*qtdExp;
+      }
+      const codEsq=CODIGOS_PORTAS_VA[`${serigrafia}|${tipoPortaDesc}|ESQ`]||'S/COD';
+      const codDir=CODIGOS_PORTAS_VA[`${serigrafia}|${tipoPortaDesc}|DIR`]||'S/COD';
+      const codFrame=CODIGOS_FRAMES_VA[`${serigrafia}|${dimMm}`]||'S/COD';
+      const descFrameTxt=serigrafia==='CINZA'?`CJ FRAME RESFR. ${dimMm} CINZA`:`CJ FRAME RESFR ${dimMm} PRETO`;
+      const qtdFrames=1*qtdExp;
+
+      addPorta(codEsq,`PORTA ${serigrafia} ${tipoPortaDesc} ESQUERDA`,qtdEsq);
+      addPorta(codDir,`PORTA ${serigrafia} ${tipoPortaDesc} DIREITA`,qtdDir);
+      addFrame(codFrame,descFrameTxt,qtdFrames);
+
+      detalhada.push({
+        cliente:it.cliente,orfa:it.orfa,alinhamento:alinh,tipo:'VA (Standard c/ Porta)',
+        dimensao:dimVal,qtdExp,
+        codEsq,qtdEsq,
+        codDir,qtdDir,
+        totalPortas:qtdEsq+qtdDir,
+        codFrame,frameDesc:descFrameTxt,qtdFrames
+      });
+    }
+  }
+
+  const portasResumo=[...mapPortas.values()].sort((a,b)=>a.cod.localeCompare(b.cod));
+  const framesResumo=[...mapFrames.values()].sort((a,b)=>a.cod.localeCompare(b.cod));
+
+  return {
+    filtrado,
+    detalhada,
+    abertos,
+    portasResumo,
+    framesResumo,
+    totalExpositores:detalhada.reduce((s,x)=>s+x.qtdExp,0),
+    totalPortas:detalhada.reduce((s,x)=>s+x.totalPortas,0),
+    totalFrames:detalhada.reduce((s,x)=>s+x.qtdFrames,0),
+    totalAbertos:abertos.reduce((s,x)=>s+x.qtdExp,0)
+  };
+}
+
+/* ================= 5. TUBOS (CHASSIS) ================= */
+const COMPRIMENTO_BARRA_PE=5200.0;
+const QTD_PES_POR_BARRA=4;
+const PESO_BARRA_PE_KG=10.0;
+const REGRAS_CHASSIS={
+  1250:{vigaDesconto:10,qtdVigas:2,qtdPes:2,pesoUnitViga:3.0},
+  1500:{vigaDesconto:10,qtdVigas:2,qtdPes:2,pesoUnitViga:3.0},
+  1680:{vigaDesconto:10,qtdVigas:2,qtdPes:3,pesoUnitViga:4.0},
+  1875:{vigaDesconto:10,qtdVigas:2,qtdPes:3,pesoUnitViga:4.0},
+  2250:{vigaDesconto:10,qtdVigas:2,qtdPes:3,pesoUnitViga:5.0},
+  2500:{vigaDesconto:10,qtdVigas:2,qtdPes:3,pesoUnitViga:5.0},
+  3000:{vigaDesconto:10,qtdVigas:2,qtdPes:4,pesoUnitViga:6.0},
+  3750:{vigaDesconto:10,qtdVigas:2,qtdPes:4,pesoUnitViga:8.0}
+};
+const CHAVES_CHASSIS=Object.keys(REGRAS_CHASSIS).map(Number);
+
+function convDimChassisMm(valDim){
+  const val=parseFloat(String(valDim??1.25).replace(',','.'));
+  if(isNaN(val))return 1250;
+  if(val>=1.74&&val<=1.78)return 1680;
+  if(val>=1.85&&val<=1.89)return 1875;
+  const mm=val<=10.0?Math.round(val*1000):Math.round(val);
+  return CHAVES_CHASSIS.reduce((best,cur)=>Math.abs(cur-mm)<Math.abs(best-mm)?cur:best,CHAVES_CHASSIS[0]);
+}
+
+function calcTubosChassis(L){
+  const itens=[];
+  for(const it of L){
+    const qtdChassis=Number(it.qtd)||1;
+    const dimChassis=convDimChassisMm(it.comprimento);
+    const cfg=REGRAS_CHASSIS[dimChassis];
+    const compVigaMm=dimChassis-cfg.vigaDesconto;
+    const qtdVigas=cfg.qtdVigas*qtdChassis;
+    const qtdPes=cfg.qtdPes*qtdChassis;
+    itens.push({
+      cliente:it.cliente,
+      orfa:it.orfa,
+      chassiMm:dimChassis,
+      qtdChassis,
+      compVigaMm,
+      pesoUnitViga:cfg.pesoUnitViga,
+      qtdVigas,
+      qtdPes
+    });
+  }
+
+  const mapVigas=new Map();
+  for(const r of itens){
+    const k=`${r.chassiMm}|${r.compVigaMm}|${r.pesoUnitViga}`;
+    if(!mapVigas.has(k))mapVigas.set(k,{chassiMm:r.chassiMm,compVigaMm:r.compVigaMm,pesoUnitViga:r.pesoUnitViga,totalVigas:0});
+    mapVigas.get(k).totalVigas+=r.qtdVigas;
+  }
+
+  const vigasResumo=[...mapVigas.values()].map(v=>{
+    const metragemTotal=Number(((v.compVigaMm*v.totalVigas)/1000).toFixed(2));
+    const pesoTotal=Number((v.totalVigas*v.pesoUnitViga).toFixed(2));
+    return {...v,metragemTotal,pesoTotal};
+  });
+
+  const totalChassis=itens.reduce((s,x)=>s+x.qtdChassis,0);
+  const totalPesGeral=itens.reduce((s,x)=>s+x.qtdPes,0);
+  const totalVigasGeral=vigasResumo.reduce((s,x)=>s+x.totalVigas,0);
+  const barrasPes=Math.ceil(totalPesGeral/QTD_PES_POR_BARRA);
+  const pesoTotalPes=Number((barrasPes*PESO_BARRA_PE_KG).toFixed(2));
+
+  const pesResumo=[{
+    descricao:'Barras para Pés de Chassi (5200mm - rende 4 pés)',
+    compBarraMm:COMPRIMENTO_BARRA_PE,
+    qtdBarras:barrasPes,
+    pesoUnitBarra:PESO_BARRA_PE_KG,
+    pesoTotal:pesoTotalPes
+  }];
+
+  const totalBarrasGeral=barrasPes+Math.ceil(totalVigasGeral/4);
+  const pesoGeralTubos=vigasResumo.reduce((s,x)=>s+x.pesoTotal,0)+pesoTotalPes;
+
+  return {
+    itens,
+    vigasResumo,
+    pesResumo,
+    totalChassis,
+    totalPesGeral,
+    totalBarrasGeral,
+    pesoGeralTubos
+  };
+}
+
+/* ================= 6. MATERIAIS PADRÃO & COMPRAS ================= */
+const BASE_MATERIAIS_RAW=[
+  {cod:'053583',nome:'CH 0.60 X 1240 X 2560 INOX 304 ESC PVC LASER',tipo:'Chapas em Inox',esp:0.60,larg:1240,comp:2560,dens:7.85},
+  {cod:'104818',nome:'CH 0.60 X 1240 X 2000 INOX 304 ESC PVC LASER',tipo:'Chapas em Inox',esp:0.60,larg:1240,comp:2000,dens:7.85},
+  {cod:'157228',nome:'CH 0.60 X 1240 X 3840 INOX 304 ESC PVC LASER',tipo:'Chapas em Inox',esp:0.60,larg:1240,comp:3840,dens:7.85},
+  {cod:'157219',nome:'CH 0.80 X 1240 X 3900 INOX 304 ESC PVC LASER',tipo:'Chapas em Inox',esp:0.80,larg:1240,comp:3900,dens:7.85},
+  {cod:'107358',nome:'CH 0.80 X 1240 X 2660 INOX 304 ESC PVC LASER',tipo:'Chapas em Inox',esp:0.80,larg:1240,comp:2660,dens:7.85},
+  {cod:'153549',nome:'CH 0.40 X 1240 X 2540 INOX 304 2B FOSCO',tipo:'Chapas em Inox',esp:0.40,larg:1240,comp:2540,dens:7.85},
+  {cod:'156082',nome:'CH 0.40 X 1240 X 3780 INOX 304 2B FOSCO',tipo:'Chapas em Inox',esp:0.40,larg:1240,comp:3780,dens:7.85},
+  {cod:'157101',nome:'CH 0.40 X 1040 X 2060 INOX 430 PVC LASER',tipo:'Chapas em Inox',esp:0.40,larg:1040,comp:2060,dens:7.85},
+  {cod:'151947',nome:'CH 0.40 X 1240 X 2550 INOX 430 PVC LASER',tipo:'Chapas em Inox',esp:0.40,larg:1240,comp:2550,dens:7.85},
+  {cod:'157226',nome:'CH 0.40 X 1240 X 3780 INOX 430 PVC LASER',tipo:'Chapas em Inox',esp:0.40,larg:1240,comp:3780,dens:7.85},
+  {cod:'150723',nome:'CH 1.00 X 1250 X 3780 INOX 304 ESC PVC LASER',tipo:'Chapas em Inox',esp:1.00,larg:1250,comp:3780,dens:7.85},
+  {cod:'103938',nome:'CH 2.00 X 1040 X 2640 INOX 304 2B FOSCO',tipo:'Chapas em Inox',esp:2.00,larg:1040,comp:2640,dens:7.85},
+  {cod:'156102',nome:'CH 1.20 X 1240 X 2960 INOX 304 ESC PVC LASER',tipo:'Chapas em Inox',esp:1.20,larg:1240,comp:2960,dens:7.85},
+  {cod:'X1',nome:'CH 1.20 X 1200 X 3780 NBR 7008 Z100 ZN MN',tipo:'Chapas Zn Mn',esp:1.20,larg:1200,comp:3780,dens:7.85},
+  {cod:'X2',nome:'CH 1.20 X 1200 X 2550 NBR 7008 Z100 ZN MN',tipo:'Chapas Zn Mn',esp:1.20,larg:1200,comp:2550,dens:7.85},
+  {cod:'108691',nome:'CH 0.65 X 1200 X 1950 NBR 7008 Z100 ZN MN',tipo:'Chapas Zn Mn',esp:0.65,larg:1200,comp:1950,dens:7.85},
+  {cod:'101652',nome:'CH 0.65 X 1200 X 2550 NBR 7008 Z100 ZN MN',tipo:'Chapas Zn Mn',esp:0.65,larg:1200,comp:2550,dens:7.85},
+  {cod:'108688',nome:'CH 0.65 X 1200 X 2220 NBR 7008 Z100 ZN MN',tipo:'Chapas Zn Mn',esp:0.65,larg:1200,comp:2220,dens:7.85},
+  {cod:'108690',nome:'CH 0.65 X 1200 X 2060 NBR 7008 Z100 ZN MN',tipo:'Chapas Zn Mn',esp:0.65,larg:1200,comp:2060,dens:7.85},
+  {cod:'108689',nome:'CH 0.65 X 1200 X 2640 NBR 7008 Z100 ZN MN',tipo:'Chapas Zn Mn',esp:0.65,larg:1200,comp:2640,dens:7.85},
+  {cod:'108749',nome:'CH 0.95 X 1200 X 2300 NBR 7008 ZC Z100 MINS/OL',tipo:'Chapas Zn Mn',esp:0.95,larg:1200,comp:2300,dens:7.85},
+  {cod:'119723',nome:'CH 0.95 X 1200 X 2550 NBR 7008 ZC Z100 MINS/OL',tipo:'Chapas Zn Mn',esp:0.95,larg:1200,comp:2550,dens:7.85},
+  {cod:'153962',nome:'CH 0.95 X 1200 X 3780 NBR 7008 ZC Z100 MINS/OL',tipo:'Chapas Zn Mn',esp:0.95,larg:1200,comp:3780,dens:7.85},
+  {cod:'149233',nome:'CH 1.80 X 1200 X 1700 GALV MINIMIZ Z100 ZAR 280 GI',tipo:'Chapas Zn Mn',esp:1.80,larg:1200,comp:1700,dens:7.85},
+  {cod:'156965',nome:'CH 1.95 X 1200 X 1950 GALV MINI Z100 ZAR 280 GI',tipo:'Chapas Zn Mn',esp:1.95,larg:1200,comp:1950,dens:7.85},
+  {cod:'54357',nome:'CH 1.95 X 1200 X 2100 GALV Z100 ZAR 280 GI',tipo:'Chapas Zn Mn',esp:1.95,larg:1200,comp:2100,dens:7.85},
+  {cod:'136309',nome:'CH 1.95 X 1200 X 2550 GALV Z100 ZAR 280 GI',tipo:'Chapas Zn Mn',esp:1.95,larg:1200,comp:2550,dens:7.85},
+  {cod:'153381',nome:'CH 0.43 X 1200 X 4000 NBR 7008 ZC Z275 RAL 9003',tipo:'Chapas Pré Pintada',esp:0.43,larg:1200,comp:4000,dens:7.85},
+  {cod:'153210',nome:'CH 0.43 X 1200 X 3780 NBR 7008 ZC Z275 RAL 9003',tipo:'Chapas Pré Pintada',esp:0.43,larg:1200,comp:3780,dens:7.85},
+  {cod:'153400',nome:'CH 0.43 X 1200 X 2550 NBR 7008 ZC Z275 RAL 9003',tipo:'Chapas Pré Pintada',esp:0.43,larg:1200,comp:2550,dens:7.85},
+  {cod:'153401',nome:'CH 0.43 X 1200 X 2550 NBR 7008 ZC Z275 NL S/OL',tipo:'Chapas Cn Zn',esp:0.43,larg:1200,comp:2550,dens:7.85},
+  {cod:'153209',nome:'CH 0.43 X 1200 X 3780 NBR 7008 ZC Z275 NL S/OL',tipo:'Chapas Cn Zn',esp:0.43,larg:1200,comp:3780,dens:7.85},
+  {cod:'153380',nome:'CH 0.43 X 1200 X 4000 NBR 7008 ZC Z275 NL S/OL',tipo:'Chapas Cn Zn',esp:0.43,larg:1200,comp:4000,dens:7.85},
+  {cod:'158212',nome:'TUBO INOX 304 NORM A 554 25X25 X 1.00 X 6000 POL',tipo:'Perfis de Inox',isTubular:true},
+  {cod:'158217',nome:'TUBO INOX 304 NORM A 554 15 X 15 X 1,00 X 6000 POL',tipo:'Perfis de Inox',isTubular:true},
+  {cod:'174028',nome:'TUBO INOX 304 NORM A 554 20 X 20 X 1,20 X 6000 POL',tipo:'Perfis de Inox',isTubular:true},
+  {cod:'158214',nome:'TUBO INOX 304 NORM A 554 20 X 10 X 1,00 X 6000 POL',tipo:'Perfis de Inox',isTubular:true},
+  {cod:'158216',nome:'TUBO INOX 304 NORM A 554 40 X 20 X 1,00 X 6000 POL',tipo:'Perfis de Inox',isTubular:true},
+  {cod:'158215',nome:'TUBO INOX 304 NORM A 554 30 X 30 X 1,00 X 6000 POL',tipo:'Perfis de Inox',isTubular:true},
+  {cod:'82856',nome:'TUBO INOX REDONDO 304 NORM A 554 1 1/4 POL',tipo:'Perfis de Inox',isTubular:true},
+  {cod:'164009',nome:'TUBO INOX REDONDO 304 NORM A 554 1 POL',tipo:'Perfis de Inox',isTubular:true},
+  {cod:'74202',nome:'TUBO INOX REDONDO 304 NORM A 554 2 POL',tipo:'Perfis de Inox',isTubular:true},
+  {cod:'165413',nome:'TUBO CARB RET NBR 6591 25X25X1,11 X 6000 MINI GALV',tipo:'Perfis Minimizados',isTubular:true}
+];
+const BASE_MATERIAIS=BASE_MATERIAIS_RAW.map(m=>({...m,pesoUnit:m.isTubular?0:Number((m.esp*(m.larg/1000)*(m.comp/1000)*m.dens).toFixed(2))}));
+
+function setMpSel(cod,modo,val){
+  const defModo='Pcs';
+  const cur=MP.selecoes[cod]||{modo:defModo,val:0};
+  const nextModo=modo!==undefined?String(modo):cur.modo;
+  const nextVal=val!==undefined?(parseFloat(String(val).replace(',','.'))||0):cur.val;
+  if(nextVal<=0&&nextModo===defModo){
+    delete MP.selecoes[cod];
+  } else {
+    MP.selecoes[cod]={modo:nextModo,val:nextVal};
+  }
+  const elModo=$('mp_modo_'+cod);
+  const elVal=$('mp_val_'+cod);
+  if(elModo&&modo!==undefined)elModo.value=nextModo;
+  if(elVal&&val!==undefined&&document.activeElement!==elVal)elVal.value=nextVal>0?nextVal:'';
+  const resumoBox=$('mp_resumo_box');
+  if(resumoBox)resumoBox.innerHTML=buildMpResumoHtml();
+}
+
+function buildMpResumoHtml(){
+  const solItens=getSolicitacaoItens();
+  const pesoGeral=solItens.reduce((s,x)=>s+x.pesoTotal,0);
+  if(!solItens.length){
+    return `<div class="box p-4 text-sm text-slate-500">Informe quantidades em pelo menos um material acima para habilitar o resumo e o PDF de compras.</div>`;
+  }
+  return `<div class="box p-4 space-y-3">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h3 class="font-semibold">Resumo da Solicitação para Compras (${solItens.length} itens selecionados)</h3>
+      <div class="text-sm font-bold">Peso Total Consolidado: ${fmtPt(pesoGeral)} kg</div>
+    </div>
+    ${table(['Código','Descrição do Material','Categoria','Quantidade Solicitada','Peso Total (Kg)'],solItens.map(i=>[`<b>${esc(i.cod)}</b>`,esc(i.nome),esc(i.tipo),esc(i.detalheQtd),i.pesoTotal>0?fmtPt(i.pesoTotal):'—']),[4])}
+    <div class="noprint"><button class="btn" onclick="gerarPdfCompras()">Gerar PDF de Solicitação para Compras</button></div>
+  </div>`;
+}
+function getSolicitacaoItens(){
+  const out=[];
+  for(const mat of BASE_MATERIAIS){
+    const sel=MP.selecoes[mat.cod];
+    if(!sel||sel.val<=0)continue;
+    let detalheQtd='',pesoTotal=0;
+    if(mat.isTubular){
+      if(sel.modo==='Pcs'){
+        const pcs=Math.round(sel.val);
+        pesoTotal=0;
+        detalheQtd=`${pcs} Pcs (${pcs*6} metros em barras de 6m)`;
+      } else if(sel.modo==='Metros (m)'){
+        const metros=Number(sel.val.toFixed(2));
+        pesoTotal=0;
+        detalheQtd=`${metros} m (~${Math.ceil(metros/6)} barras de 6m)`;
+      } else {
+        pesoTotal=Number(sel.val.toFixed(2));
+        detalheQtd=`${pesoTotal} Kg (Informado Direto)`;
+      }
+    } else {
+      if(sel.modo==='Pcs'){
+        const pcs=Math.round(sel.val);
+        pesoTotal=Number((pcs*mat.pesoUnit).toFixed(2));
+        detalheQtd=`${pcs} Pcs`;
+      } else {
+        pesoTotal=Number(sel.val.toFixed(2));
+        detalheQtd=`${pesoTotal} Kg`;
+      }
+    }
+    out.push({cod:mat.cod,nome:mat.nome,tipo:mat.tipo,detalheQtd,pesoTotal});
+  }
+  return out;
+}
+
+function gerarPdfCompras(){
+  const itens=getSolicitacaoItens();
+  if(!itens.length)return toast('Selecione ao menos um material com quantidade maior que zero.');
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const pesoGeral=itens.reduce((s,x)=>s+x.pesoTotal,0);
+  const agoraBr=new Date(Date.now()-3*3600*1000).toISOString().replace('T',' ').slice(0,19);
+  const [y,mo,d]=agoraBr.slice(0,10).split('-');
+  const dataFormatada=`${d}/${mo}/${y} ${agoraBr.slice(11)}`;
+
+  doc.setFillColor(10,37,64);
+  doc.rect(15,15,180,12,'F');
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(12);
+  doc.text('SOLICITAÇÃO DE COMPRAS DE MATERIAIS — REFRIGERAÇÃO',105,22.5,{align:'center'});
+
+  doc.setFillColor(241,245,249);
+  doc.rect(15,30,180,9,'F');
+  doc.setTextColor(0,82,204);
+  doc.setFontSize(8.5);
+  doc.text(`Data de Emissão: ${dataFormatada}   |   Solicitante: ${MP.solicitante}   |   Setor: ${MP.setor}`,18,35.8);
+
+  doc.autoTable({
+    startY:43,
+    margin:{left:15,right:15},
+    head:[['Cód.','Descrição do Material','Qtd Solicitada','Peso Total']],
+    body:itens.map(i=>[i.cod,i.nome,i.detalheQtd,i.pesoTotal>0?`${i.pesoTotal} kg`:'—']),
+    styles:{font:'helvetica',fontSize:8,cellPadding:2.5},
+    headStyles:{fillColor:[0,82,204],textColor:[255,255,255],halign:'center'},
+    columnStyles:{0:{halign:'center',cellWidth:20},2:{halign:'center',cellWidth:42},3:{halign:'center',cellWidth:28}},
+    alternateRowStyles:{fillColor:[248,250,252]}
+  });
+
+  const yTotal=(doc.lastAutoTable?.finalY||100)+4;
+  doc.setFillColor(226,232,240);
+  doc.rect(15,yTotal,180,9,'F');
+  doc.setTextColor(10,37,64);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(9);
+  doc.text(`PESO TOTAL CONSOLIDADO (CHAPAS): ${fmtPt(pesoGeral)} KG`,192,yTotal+5.8,{align:'right'});
+
+  const yAss=yTotal+28;
+  doc.setTextColor(51,65,85);
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  doc.line(20,yAss,95,yAss);
+  doc.line(115,yAss,190,yAss);
+  doc.text(`Solicitante: ${MP.solicitante}`,57.5,yAss+5,{align:'center'});
+  doc.text(`Setor de Destino: ${MP.setor}`,152.5,yAss+5,{align:'center'});
+
+  const stamp=new Date().toISOString().replace(/[-:T]/g,'').slice(0,12);
+  doc.save(`Solicitacao_Compras_${MP.setor}_${stamp}.pdf`);
 }
 
 /* ================= COMPONENTES ================= */
@@ -342,6 +1142,101 @@ op_injecao(L){
   }
   return kpis+tg+table(['Tipo / Modo','Item / Peça','Material','Dimensão','Modelos','ORFAs','Qtd total'],agr.map(x=>[`<span class="tag">${esc(x.tipo)}</span>`,`<b>${esc(x.peca)}</b>`,esc(x.material),esc(x.dimensao),esc([...x.modelos].join(', ')),esc([...x.orfas].join(', ')),x.qtd]),[6])+dash;
 },
+bandejas_pead(L){
+  if(!L.length)return empty();
+  const r=calcBandejasPead(L);
+  const kpis=`<div class="grid grid-cols-2 lg:grid-cols-4 gap-4">${kpi('TOTAL DE CLIENTES',r.totalClientes)}${kpi('MÓDULOS PROGRAMADOS',fmtPt(r.totalModulos))}${kpi('TOTAL BANDEJAS ABS',fmtInt(r.totalBandejasAbs))}${kpi('PESO PEAD (kg)',`${fmtPt(r.totalPesoPead)} kg`)}</div>`;
+  const s1=`<h3 class="font-semibold text-sm">1. Separação de matéria-prima PEAD (placas)</h3>`+table(['Medida da placa','Espessura','Tipo de bandeja','Qtd placas','Peso unit. (kg)','Peso total (kg)'],r.pead.map(p=>[`<b>${esc(p.medida)}</b>`,esc(p.espessura),esc(p.tipoBandeja),p.qtdPlacas,fmtPt(p.pesoUnit),fmtPt(p.pesoTotal)]),[3,4,5]);
+  const s2=`<h3 class="font-semibold text-sm">2. Resumo de bandejas por modelo de expositor</h3>`+table(['Modelo do expositor','Módulos (1,25m)','Bandeja C790','Bandeja C530','Bandeja C410','Total ABS'],r.geralModelo.map(m=>[`<b>${esc(m.modelo)}</b>`,fmtPt(m.modulos),m.c790,m.c530,m.c410,m.totalAbs]),[1,2,3,4,5]);
+  const s3=`<h3 class="font-semibold text-sm">3. Demanda detalhada por cliente e ORFA</h3>`+table(['Cliente','ORFA / OP','Modelo','Módulos (1,25m)','Bandeja C790','Bandeja C530','Bandeja C410','Total ABS'],r.porCliente.map(c=>[esc(c.cliente),`<b>${esc(c.orfa)}</b>`,`<b>${esc(c.modelo)}</b>`,fmtPt(c.modulos),c.c790,c.c530,c.c410,c.totalAbs]),[3,4,5,6,7]);
+  return kpis+s1+s2+s3;
+},
+chapas_cristal(L){
+  if(!L.length)return empty();
+  const r=calcChapasCristal(L);
+  const kpis=`<div class="grid grid-cols-2 lg:grid-cols-5 gap-4">${kpi('CH 2550 mm',`${fmtInt(r.t2550)} un`)}${kpi('CH 3780 mm',`${fmtInt(r.t3780)} un`)}${kpi('CH 4000 mm',`${fmtInt(r.t4000)} un`)}${kpi('Total de chapas',`${fmtInt(r.totalChapas)} un`)}${kpi('Peso total material',`${fmtPt(r.pesoTotal)} kg`)}</div>`;
+  const s1=`<h3 class="font-semibold text-sm">1. Resumo de consumo por tipo de blank (0,43mm)</h3>`+table(['Tipo de chapa','Dimensões (mm)','Quantidade total (un)','Peso total (kg)'],r.resumo.map(x=>[`<b>${esc(x.tipo)}</b>`,esc(x.dim),x.qtd,fmtPt(x.peso)]),[2,3]);
+  const s2=`<h3 class="font-semibold text-sm">2. Detalhamento de insumos por item da montagem</h3>`+table(['Cliente','ORFA / OP','Linha','Dimensão (m)','Alinhamento','CH 2550 (UN)','CH 3780 (UN)','CH 4000 (UN)','Total chapas','Peso total (kg)'],r.detalhamento.map(d=>[esc(d.cliente),`<b>${esc(d.orfa)}</b>`,esc(d.linha),esc(d.dimensao),esc(d.alinhamento),d.ch2550,d.ch3780,d.ch4000,d.totalChapas,fmtPt(d.pesoTotal)]),[5,6,7,8,9]);
+  return kpis+s1+s2;
+},
+chapas_inox(L){
+  if(!L.length)return empty();
+  const r=calcChapasInox(L);
+  const kpis=`<div class="grid grid-cols-2 lg:grid-cols-5 gap-4">${kpi('Total chapas',`${fmtPt(r.totalChapas)} un`)}${kpi('Peso total inox',`${fmtPt(r.pesoTotal)} kg`)}${r.resumo.slice(0,3).map(x=>kpi(x.label,`${fmtPt(x.qtd)} un`)).join('')}</div>`;
+  const s1=`<h3 class="font-semibold text-sm">1. Resumo de consumo por blank de inox</h3>`+table(['Código','Descrição do blank de inox','Quantidade total (un)','Peso total (kg)'],r.resumo.map(x=>[`<b>${esc(x.cod)}</b>`,esc(x.desc),fmtPt(x.qtd),fmtPt(x.peso)]),[2,3]);
+  const s2=`<h3 class="font-semibold text-sm">2. Demanda detalhada de inox por cliente e expositor</h3>`+table(['Cliente','ORFA / OP','Linha','Dimensão (m)','Alinhamento','0,8 (3900)','0,6 (2560)','0,6 (2000)','0,6 (3840 VRA)','1,2 (2960 Col.)','0,4 (2540)','0,4 (3780)','0,4 (2550)','0,4 (2060)','Peso total (kg)'],r.detalhamento.map(d=>[esc(d.cliente),`<b>${esc(d.orfa)}</b>`,esc(d.linha),esc(d.dimensao),esc(d.alinhamento),d.c157219,d.c053583,d.c104818,d.c157228,d.c156102,d.c153549,d.c156082,d.c151947,d.c157101,fmtPt(d.pesoTotal)]),[5,6,7,8,9,10,11,12,13,14]);
+  return kpis+s1+s2;
+},
+portas_frames(L){
+  if(!L.length)return empty();
+  const r=calcPortasFrames(L);
+  const kpis=`<div class="grid grid-cols-2 lg:grid-cols-4 gap-4">${kpi('Expositores c/ porta',fmtInt(r.totalExpositores))}${kpi('Total de portas (un)',fmtInt(r.totalPortas))}${kpi('Total de frames',fmtInt(r.totalFrames))}${kpi('Expositores abertos',fmtInt(r.totalAbertos))}</div>`;
+  const alerta=r.totalAbertos>0?`<div class="px-4 py-3 rounded bg-amber-100 border border-amber-300 text-sm"><b>Atenção:</b> Foram encontrados <b>${r.totalAbertos} expositor(es) aberto(s)</b> (sem fechamento de porta). Confira na seção 4 para programação manual de vidros.</div>`:'';
+  const s1=`<h3 class="font-semibold text-sm">1. Resumo consolidado de portas (VA & VAP)</h3>`+table(['Código','Modelo de porta','Qtd portas (un)'],r.portasResumo.map(p=>[`<b>${esc(p.cod)}</b>`,esc(p.modeloPorta),p.qtd]),[2]);
+  const s2=`<h3 class="font-semibold text-sm">2. Resumo consolidado de frames e quadros congelados</h3>`+table(['Código','Modelo de frame','Qtd frames (un)'],r.framesResumo.map(f=>[`<b>${esc(f.cod)}</b>`,esc(f.modeloFrame),f.qtd]),[2]);
+  const s3=`<h3 class="font-semibold text-sm">3. Demanda detalhada por cliente e alinhamento</h3>`+table(['Cliente','ORFA / OP','Alinhamento','Tipo','Dimensão (m)','Qtd exp.','Cód. esq.','Qtd esq.','Cód. dir.','Qtd dir.','Total portas','Cód. frame','Frame desc.','Qtd frames'],r.detalhada.map(d=>[esc(d.cliente),`<b>${esc(d.orfa)}</b>`,esc(d.alinhamento),esc(d.tipo),d.dimensao,d.qtdExp,esc(d.codEsq),d.qtdEsq,esc(d.codDir),d.qtdDir,d.totalPortas,esc(d.codFrame),esc(d.frameDesc),d.qtdFrames]),[5,7,9,10,13]);
+  const s4=`<h3 class="font-semibold text-sm">4. Expositores abertos (programação manual de vidros)</h3>`+table(['Cliente','ORFA / OP','Alinhamento','Tipo','Dimensão (m)','Qtd exp.','Observação'],r.abertos.map(a=>[esc(a.cliente),`<b>${esc(a.orfa)}</b>`,esc(a.alinhamento),esc(a.tipo),a.dimensao,a.qtdExp,esc(a.obs)]),[5]);
+  return kpis+alerta+s1+s2+s3+s4;
+},
+tubos_chassis(L){
+  if(!L.length)return empty();
+  const r=calcTubosChassis(L);
+  const kpis=`<div class="grid grid-cols-2 lg:grid-cols-4 gap-4">${kpi('Total de chassis',fmtInt(r.totalChassis))}${kpi('Total de pés (un)',fmtInt(r.totalPesGeral))}${kpi('Barras totais (est.)',fmtInt(r.totalBarrasGeral))}${kpi('Peso total tubos',`${fmtPt(r.pesoGeralTubos)} kg`)}</div>`;
+  const s1=`<h3 class="font-semibold text-sm">1. Separação de barras para pés (5200 mm)</h3>`+table(['Descrição do item','Comprimento barra (mm)','Qtd barras','Peso unit. barra (kg)','Peso total (kg)'],r.pesResumo.map(p=>[`<b>${esc(p.descricao)}</b>`,p.compBarraMm,p.qtdBarras,fmtPt(p.pesoUnitBarra),fmtPt(p.pesoTotal)]),[1,2,3,4]);
+  const s2=`<h3 class="font-semibold text-sm">2. Resumo de vigas de fixação por dimensão de chassi</h3>`+table(['Chassi (mm)','Compr. viga (mm)','Peso unit. viga (kg)','Total de vigas','Metragem total (m)','Peso total (kg)'],r.vigasResumo.map(v=>[`<b>${v.chassiMm}</b>`,v.compVigaMm,fmtPt(v.pesoUnitViga),v.totalVigas,fmtPt(v.metragemTotal),fmtPt(v.pesoTotal)]),[0,1,2,3,4,5]);
+  const s3=`<h3 class="font-semibold text-sm">3. Demanda detalhada de chassis por cliente e ORFA</h3>`+table(['Cliente','ORFA / OP','Chassi (mm)','Qtd chassis','Compr. viga (mm)','Peso unit. viga (kg)','Qtd vigas','Qtd pés'],r.itens.map(x=>[esc(x.cliente),`<b>${esc(x.orfa)}</b>`,x.chassiMm,x.qtdChassis,x.compVigaMm,fmtPt(x.pesoUnitViga),x.qtdVigas,x.qtdPes]),[2,3,4,5,6,7]);
+  return kpis+s1+s2+s3;
+},
+materiais_padrao(){
+  const cats=['Todas',...new Set(BASE_MATERIAIS.map(m=>m.tipo))];
+  const setores=['PCP','Engenharia','Produção','Montagem','Qualidade','Manutenção','Compras'];
+  const filtrados=BASE_MATERIAIS.filter(m=>(MP.categoria==='Todas'||m.tipo===MP.categoria)&&(!MP.busca||m.cod.toLowerCase().includes(MP.busca)||m.nome.toLowerCase().includes(MP.busca)));
+  const solItens=getSolicitacaoItens();
+  const pesoGeral=solItens.reduce((s,x)=>s+x.pesoTotal,0);
+
+  const cfgBox=`<div class="box p-4 grid md:grid-cols-2 gap-4 noprint">
+    <div><label class="text-xs font-semibold block mb-1">Nome do Solicitante</label><input class="w-full" value="${esc(MP.solicitante)}" onchange="MP.solicitante=this.value"></div>
+    <div><label class="text-xs font-semibold block mb-1">Setor de Destino</label><select class="w-full" onchange="MP.setor=this.value">${setores.map(s=>`<option ${MP.setor===s?'selected':''} value="${esc(s)}">${esc(s)}</option>`).join('')}</select></div>
+  </div>`;
+
+  const filtroBox=`<div class="box p-4 flex flex-wrap gap-3 noprint">
+    <select onchange="MP.categoria=this.value;render()">${cats.map(c=>`<option ${MP.categoria===c?'selected':''} value="${esc(c)}">${esc(c)}</option>`).join('')}</select>
+    <input class="flex-1 min-w-[200px]" placeholder="Pesquisar por Código ou Descrição (ex: 158212, Inox 304, Redondo...)" value="${esc(MP.busca)}" oninput="MP.busca=this.value.toLowerCase();clearTimeout(window._mp);window._mp=setTimeout(render,200)">
+  </div>`;
+
+  const nota=`<div class="text-xs text-slate-500">Para <b>Perfis Tubulares</b>: <b>Pcs</b> considera cada peça uma barra de 6m; <b>Metros (m)</b> calcula pelo comprimento informado; <b>Kg</b> insere o peso direto sem somar no peso automático de chapas.</div>`;
+
+ const rowsHtml=filtrados.map(mat=>{
+    const sel=MP.selecoes[mat.cod]||{modo:'Pcs',val:0};
+    const modos=mat.isTubular?['Pcs','Metros (m)','Kg']:['Pcs','Kg'];
+    const pesoExib=mat.isTubular?'Tubular (Sem Peso Fixo)':`${mat.pesoUnit} kg/un`;
+    return `<tr>
+      <td><b class="text-cyan-800">#${esc(mat.cod)}</b></td>
+      <td>${esc(mat.nome)}</td>
+      <td class="text-slate-500">${esc(pesoExib)}</td>
+      <td><select id="mp_modo_${esc(mat.cod)}" onchange="setMpSel('${esc(mat.cod)}',this.value,undefined)">${modos.map(md=>`<option ${sel.modo===md?'selected':''} value="${md}">${md}</option>`).join('')}</select></td>
+      <td><input id="mp_val_${esc(mat.cod)}" type="number" min="0" step="any" class="w-28" value="${sel.val>0?sel.val:''}" placeholder="0" oninput="setMpSel('${esc(mat.cod)}',undefined,this.value)"></td>
+    </tr>`;
+  }).join('');
+
+const listaMat=`<div class="box scroll"><table><thead><tr><th>Código</th><th>Descrição</th><th>Ref. Peso</th><th>Modo</th><th>Qtd</th></tr></thead><tbody>${rowsHtml||`<tr><td colspan="5" class="text-center text-slate-500 py-6">Nenhum material encontrado.</td></tr>`}</tbody></table></div>`;
+
+  let resumoHtml='';
+  if(solItens.length){
+    resumoHtml=`<div class="box p-4 space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h3 class="font-semibold">Resumo da Solicitação para Compras (${solItens.length} itens selecionados)</h3>
+        <div class="text-sm font-bold">Peso Total Consolidado: ${fmtPt(pesoGeral)} kg</div>
+      </div>
+      ${table(['Código','Descrição do Material','Categoria','Quantidade Solicitada','Peso Total (Kg)'],solItens.map(i=>[`<b>${esc(i.cod)}</b>`,esc(i.nome),esc(i.tipo),esc(i.detalheQtd),i.pesoTotal>0?fmtPt(i.pesoTotal):'—']),[4])}
+      <div class="noprint"><button class="btn" onclick="gerarPdfCompras()">Gerar PDF de Solicitação para Compras</button></div>
+    </div>`;
+  } else {
+    resumoHtml=`<div class="box p-4 text-sm text-slate-500">Informe quantidades em pelo menos um material acima para habilitar o resumo e o PDF de compras.</div>`;
+  }
+
+ return cfgBox+filtroBox+nota+listaMat+`<div id="mp_resumo_box">${buildMpResumoHtml()}</div>`;
+},
 historico(){
   const up=can('import')?`<div id="drop" class="box border-2 border-dashed p-8 text-center cursor-pointer noprint" onclick="$('fi').click()">
     <input id="fi" type="file" accept="application/pdf" multiple class="hidden" onchange="importFiles([...this.files]);this.value=''">
@@ -366,7 +1261,7 @@ function render(){
   $('title').textContent=page==='familias'&&famSel?`Família: ${famSel}`:PAGES[page];
   renderNav();renderFilters();
   const L=filtered();
-  const needData=['dashboard','pedidos','bojos','refrig','separacao','op_injecao'].includes(page);
+  const needData=['dashboard','pedidos','bojos','refrig','separacao','op_injecao','bandejas_pead','chapas_cristal','chapas_inox','portas_frames','tubos_chassis'].includes(page);
   $('view').innerHTML=(needData&&!items.length)?empty():V[page](L);
 }
 function toast(m){const t=$('toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.add('hidden'),6000)}
@@ -403,6 +1298,24 @@ function exportExcel(){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(bj.map(b=>({Família:b.f,Material:b.b,'Dimensão (mm)':b.c,'Qtd Bojos':b.qtd}))),'Bojos');
   const opAgr=groupInjecao(L,visao==='sequencial',visao==='familia_peca',tipoPecaFiltro);
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(opAgr.map(o=>({'Família de Peça':o.tipo,'Linha OP':o.grupoLinha,'Item / Peça':o.peca,Material:o.material,Dimensão:o.dimensao,Modelos:[...o.modelos].join(', '),ORFAs:[...o.orfas].join(', '),'Qtd Total':o.qtd}))),'OP INJEÇÃO');
+
+  const bnd=calcBandejasPead(L);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(bnd.pead.map(p=>({'Medida da Placa':p.medida,Espessura:p.espessura,'Tipo de Bandeja':p.tipoBandeja,'Qtd Placas':p.qtdPlacas,'Peso Unit. (kg)':p.pesoUnit,'Peso Total (kg)':p.pesoTotal}))),'PEAD');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(bnd.porCliente.map(c=>({Cliente:c.cliente,'ORFA / OP':c.orfa,Modelo:c.modelo,'Módulos (1,25m)':c.modulos,'Bandeja C790':c.c790,'Bandeja C530':c.c530,'Bandeja C410':c.c410,'Total ABS':c.totalAbs}))),'Bandejas ABS');
+
+  const chC=calcChapasCristal(L);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(chC.detalhamento.map(d=>({Cliente:d.cliente,'ORFA / OP':d.orfa,Linha:d.linha,'Dimensão (m)':d.dimensao,Alinhamento:d.alinhamento,'CH 2550 (UN)':d.ch2550,'CH 3780 (UN)':d.ch3780,'CH 4000 (UN)':d.ch4000,'Total Chapas':d.totalChapas,'Peso Total (kg)':d.pesoTotal}))),'Chapas Cristal');
+
+  const chI=calcChapasInox(L);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(chI.resumo.map(r=>({Código:r.cod,'Descrição do Blank':r.desc,'Quantidade Total (un)':r.qtd,'Peso Total (kg)':r.peso}))),'Chapas Inox');
+
+  const pf=calcPortasFrames(L);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(pf.portasResumo.map(p=>({Código:p.cod,'Modelo de Porta':p.modeloPorta,'Qtd Portas (un)':p.qtd}))),'Portas');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(pf.framesResumo.map(f=>({Código:f.cod,'Modelo de Frame':f.modeloFrame,'Qtd Frames (un)':f.qtd}))),'Frames');
+
+  const tb=calcTubosChassis(L);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(tb.vigasResumo.map(v=>({'Chassi (mm)':v.chassiMm,'Compr. Viga (mm)':v.compVigaMm,'Peso Unit. Viga (kg)':v.pesoUnitViga,'Total de Vigas':v.totalVigas,'Metragem Total (m)':v.metragemTotal,'Peso Total (kg)':v.pesoTotal}))),'Tubos Vigas');
+
   XLSX.writeFile(wb,`ORFAs_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
