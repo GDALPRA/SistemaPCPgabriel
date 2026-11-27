@@ -113,9 +113,10 @@ const getUsers=()=>JSON.parse(localStorage.getItem('erp_users')||'[]');
 const setUsers=u=>localStorage.setItem('erp_users',JSON.stringify(u));
 async function seedUsers(){if(!getUsers().length)setUsers([{name:'admin',pass:await sha('admin123'),role:'admin'}])}
 async function doLogin(){
-  const u=getUsers().find(x=>x.name===$('lu').value.trim());
+  const nomeInput=$('lu').value.trim().toLowerCase();
+  const u=getUsers().find(x=>x.name.trim().toLowerCase()===nomeInput);
   if(u&&u.pass===await sha($('lp').value)){sessionStorage.setItem('erp_user',JSON.stringify({name:u.name,role:u.role}));start()}
-  else $('lerr').textContent='Usuário ou senha incorretos.';
+  else $('lerr').textContent='Usuário ou senha incorretos. (Em um novo endereço como o GitHub, usuários criados no localhost não vêm automáticos; entre com admin / admin123 para criar os acessos aqui.)';
 }
 function logout(){sessionStorage.removeItem('erp_user');location.reload()}
 $('lp').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
